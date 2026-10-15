@@ -62,6 +62,7 @@ select,input[type=number],input[type=text]{background:var(--bg);border:1px solid
 .seg button{border:0;background:transparent;padding:8px 4px;border-radius:6px;cursor:pointer;font-weight:600;font-size:14px;color:var(--muted);min-width:0}
 .seg button small{display:block;font-family:var(--f-num);font-weight:500;font-size:11px;opacity:.85}
 .seg button[aria-pressed="true"]{background:var(--surface);color:var(--accent);box-shadow:0 1px 2px rgba(0,0,0,.1)}
+.seg button:disabled{opacity:.4;cursor:not-allowed}
 .chips{display:flex;flex-wrap:wrap;gap:6px}
 .chip{border:1px solid var(--line);background:transparent;border-radius:999px;padding:6px 12px;cursor:pointer;font-size:14px}
 .chip[aria-pressed="true"]{background:var(--accent);border-color:var(--accent);color:var(--on-accent)}
@@ -147,9 +148,9 @@ dl.facts dt{color:var(--muted)}
 dl.facts dd{margin:0;overflow-wrap:anywhere}
 .ivl{display:flex;height:22px;border-radius:5px;overflow:hidden;gap:1px}
 .ivl span{display:block;height:100%}
-.ivl .w{background:var(--line)}
-.ivl .f{background:var(--signal)}
-.ivl .e{background:var(--accent-soft)}
+.ivl .w{background:var(--muted)}
+.ivl .f{background:var(--route)}
+.ivl .e{background:var(--start)}
 .legend{display:flex;gap:12px;font-size:12px;color:var(--muted);flex-wrap:wrap}
 .legend i{display:inline-block;width:10px;height:10px;border-radius:2px;margin-right:4px;vertical-align:-1px}
 ul.tips{margin:0;padding-left:18px;display:flex;flex-direction:column;gap:4px;font-size:14px}
@@ -203,6 +204,23 @@ dialog#authDlg::backdrop{background:rgba(0,0,0,.35)}
 .dlg-head h2{font-size:19px}
 .toast{position:fixed;left:50%;bottom:calc(20px + env(safe-area-inset-bottom,0px));transform:translateX(-50%);background:var(--ink);color:var(--bg);padding:10px 16px;border-radius:999px;font-size:14px;font-weight:600;z-index:1000;max-width:calc(100% - 32px)}
 .note{font-size:12px;color:var(--muted);border-top:1px solid var(--line);padding-top:12px;margin:0}
+
+/* 실시간 기록: 화면 아래 고정 패널 */
+.run{position:fixed;left:0;right:0;bottom:0;z-index:1100;background:var(--surface);border-top:1px solid var(--line);box-shadow:0 -4px 16px rgba(0,0,0,.14);
+  padding:12px max(16px,env(safe-area-inset-right,0px)) calc(12px + env(safe-area-inset-bottom,0px)) max(16px,env(safe-area-inset-left,0px))}
+.run-in{max-width:1180px;margin:0 auto;display:flex;flex-direction:column;gap:8px}
+.run-stats{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:8px}
+.run-stats .k{font-size:11.5px;color:var(--muted);font-weight:600}
+.run-stats .v{font-family:var(--f-num);font-size:22px;font-weight:600;line-height:1.2;white-space:nowrap}
+.run-stats .v.kcal{color:var(--signal)}
+@media (max-width:420px){.run-stats .v{font-size:18px}}
+.run-state{font-size:13px;color:var(--muted);margin:0}
+.run-state.ok{color:var(--accent)}
+.run-state.warn{color:var(--warn)}
+.run .actions .btn{flex:1}
+body.running{padding-bottom:210px}
+body.running .toast{bottom:calc(190px + env(safe-area-inset-bottom,0px))}
+.me-dot{width:16px;height:16px;border-radius:50%;background:var(--dest);border:3px solid #fff;box-shadow:0 0 0 1px rgba(0,0,0,.25),0 1px 4px rgba(0,0,0,.35);position:absolute;left:-8px;top:-8px}
 @media (prefers-reduced-motion:no-preference){.card,.btn,.chip,.seg button{transition:background .15s,border-color .15s,color .15s}}
 </style>
 
@@ -245,11 +263,12 @@ dialog#authDlg::backdrop{background:rgba(0,0,0,.35)}
         <span class="label">페이스</span>
         <div class="seg" id="pace" role="group" aria-label="페이스"></div>
         <label class="inline"><input type="checkbox" id="customOn"> 내 페이스 직접 입력
-          <input type="number" id="customPace" min="3" max="20" step="0.5" value="6.5" style="width:84px" disabled> 분/km</label>
+          <input type="number" id="customKmh" min="3" max="25" step="0.5" value="8" style="width:84px" disabled> km/h</label>
       </div>
       <div class="field">
         <span class="label">난이도</span>
-        <div class="seg" id="difficulty" role="group" aria-label="난이도"></div>
+        <div class="seg" id="difficulty" role="group" aria-label="난이도" aria-describedby="diffHint"></div>
+        <p class="hint" id="diffHint" hidden></p>
       </div>
       <div class="field">
         <span class="label">목표</span>
@@ -279,7 +298,9 @@ dialog#authDlg::backdrop{background:rgba(0,0,0,.35)}
           <span class="say" id="pickSay"></span>
         </div>
         <div class="maplegend">
-          <span><i style="background:var(--route)"></i>추천 코스</span>
+          <span id="lgRoute"><i style="background:var(--route)"></i>추천 코스</span>
+          <span id="lgIvl" hidden><i style="background:var(--muted)"></i>워밍업·쿨다운 <i style="background:var(--route);margin-left:8px"></i>고강도 <i style="background:var(--start);margin-left:8px"></i>저강도</span>
+          <span><i style="background:var(--dest)"></i>내 이동 경로 (운동 중)</span>
           <span><i style="background:var(--map-park)"></i>공원</span>
           <span><i style="background:var(--map-water)"></i>물</span>
           <span><i style="background:transparent;border:1.5px dashed var(--map-bound)"></i>송도동 경계</span>
@@ -312,6 +333,23 @@ dialog#authDlg::backdrop{background:rgba(0,0,0,.35)}
   </section>
 </div>
 <div class="toast" id="toast" hidden></div>
+<div class="run" id="run" hidden aria-live="polite">
+  <div class="run-in">
+    <div class="run-stats">
+      <div><div class="k">시간</div><div class="v" id="runTime">0:00</div></div>
+      <div><div class="k">거리</div><div class="v" id="runKm">0.00 km</div></div>
+      <div><div class="k">평균 페이스</div><div class="v" id="runPace">-</div></div>
+      <div><div class="k">칼로리</div><div class="v kcal" id="runKcal">0 kcal</div></div>
+    </div>
+    <p class="run-state" id="runState"></p>
+    <div class="actions">
+      <button type="button" class="btn" id="runPause">일시정지</button>
+      <button type="button" class="btn" id="runFollow">내 위치로</button>
+      <button type="button" class="btn primary" id="runStop">종료·저장</button>
+      <button type="button" class="btn" id="runCancel">취소</button>
+    </div>
+  </div>
+</div>
 <dialog id="authDlg" aria-labelledby="authTitle">
   <form id="authForm" method="dialog" novalidate>
     <div class="dlg-head"><h2 id="authTitle">로그인</h2><button type="button" class="x" id="authClose" aria-label="닫기">×</button></div>
@@ -356,14 +394,16 @@ const PACES = {
 const DIFFS = {
   flat:     { label: "평지",   metAdd: 0 },
   hill:     { label: "오르막", metAdd: 1.5 },
-  interval: { label: "인터벌", metAdd: 1.0 },
+  interval: { label: "인터벌", metAdd: 0 },   // 구간별 속도로 MET를 따로 계산
 };
 const GOALS = { diet: "다이어트", record: "기록", healing: "힐링" };
 const SCENERY = { park: "공원", water: "물가", city: "도심", mountain: "언덕(봉재산)" };
 const DURATIONS = [20, 40, 60];
+const IVL = { up: 2, down: 2, fastMin: 2, slowMin: 1 };
+const WALK_MAX_KMH = 6.5;   // 이보다 느리면 걷기 → 인터벌 끔
 
 const Calc = {
-  speedKmh(pace, customPaceMinPerKm) { return customPaceMinPerKm ? 60 / customPaceMinPerKm : PACES[pace].kmh; },
+  speedKmh(pace, customKmh) { return customKmh || PACES[pace].kmh; },
   distanceKm(kmh, min) { return kmh * (min / 60); },
   // 직접 입력 페이스는 속도로 MET 근사: 6.5 km/h 미만 걷기, 이후 조깅/러닝
   baseMet(pace, kmh, custom) {
@@ -373,10 +413,15 @@ const Calc = {
     return 7.0 + (kmh - 8) * 1.4;
   },
   kcal(met, kg, min) { return met * kg * (min / 60); },
-  intervalPlan(min) {   // 워밍업 → (빠르게 1분 + 천천히 2분) × n → 쿨다운
-    const warm = min >= 40 ? 5 : 3;
-    const sets = Math.floor((min - warm * 2) / 3);
-    return { warm, sets, cool: min - warm - sets * 3 };
+  // 인터벌: 워밍업 → (고강도 2분 + 저강도 1분) × n → 쿨다운. 고강도 = 기본 속도 +2 km/h, 저강도 = −2 km/h
+  intervalPlan(min, kmh) {
+    const warm = min >= 40 ? 5 : 3, per = IVL.fastMin + IVL.slowMin;
+    const sets = Math.floor((min - warm * 2) / per), cool = min - warm - sets * per;
+    const fast = kmh + IVL.up, slow = kmh - IVL.down;
+    const segs = [["w", warm, kmh]];   // 시간 순서: [구간, 분, km/h]
+    for (let i = 0; i < sets; i++) segs.push(["f", IVL.fastMin, fast], ["e", IVL.slowMin, slow]);
+    segs.push(["w", cool, kmh]);
+    return { warm, sets, cool, fast, slow, segs, km: segs.reduce((a, [, m, v]) => a + v * m / 60, 0) };
   },
 };
 // 단위 포맷터: 화면 전체에서 이 함수만 사용
@@ -449,13 +494,15 @@ const DIFF_TIP = {
 };
 
 /* ================== 5. 상태 ================== */
-const DEFAULT_INPUT = { start: STATIONS[0], dest: STATIONS[0], pace: "jog", customOn: false, customPace: 6.5,
+const DEFAULT_INPUT = { start: STATIONS[0], dest: STATIONS[0], pace: "jog", customOn: false, customKmh: 8,
   difficulty: "flat", goal: "healing", scenery: ["park"], weight: 65 };
 let input = Object.assign({}, DEFAULT_INPUT, store.get("input", {}));
 const validPlace = p => p && typeof p === "object" && Array.isArray(p.at) && Engine.inSongdo(p.at);
 if (!validPlace(input.start)) input.start = DEFAULT_INPUT.start;
 if (!validPlace(input.dest)) input.dest = input.start;
 input.scenery = (input.scenery || []).filter(s => SCENERY[s]);
+delete input.customPace;   // 예전 분/km 값
+if (!(input.customKmh >= 3 && input.customKmh <= 25)) input.customKmh = DEFAULT_INPUT.customKmh;
 if (!PACES[input.pace]) input.pace = "jog";
 let records = store.get("records", []);
 let selected = 1;       // 기본으로 40분 코스를 펼침
@@ -523,6 +570,23 @@ function drawBase() {
 function pinIcon(text, cls) {
   return L.divIcon({ className: "", iconSize: [0, 0], html: `<div class="pin-dot ${cls}"></div><div class="pin-label ${cls}">${esc(text)}</div>` });
 }
+// 경로를 거리 비율(합 1) 순서대로 잘라 조각 목록으로
+function splitPath(path, fracs) {
+  const cum = [0];
+  for (let i = 1; i < path.length; i++) cum.push(cum[i - 1] + Engine.distM(path[i - 1], path[i]));
+  const total = cum[cum.length - 1], parts = [];
+  let i = 1, cur = [path[0]], acc = 0;
+  for (const f of fracs) {
+    const end = (acc += f) * total;
+    while (i < path.length && cum[i] <= end + 1e-6) cur.push(path[i++]);
+    if (i < path.length) {   // 구간 경계가 선분 중간이면 그 지점을 끼워 넣음
+      const t = (end - cum[i - 1]) / ((cum[i] - cum[i - 1]) || 1), a = path[i - 1], b = path[i];
+      const mid = [a[0] + (b[0] - a[0]) * t, a[1] + (b[1] - a[1]) * t];
+      cur.push(mid); parts.push(cur); cur = [mid];
+    } else { parts.push(cur); cur = [path[path.length - 1]]; }
+  }
+  return parts;
+}
 function drawRoute(fit = false) {
   if (!routeLayer) return;
   routeLayer.clearLayers();
@@ -531,13 +595,18 @@ function drawRoute(fit = false) {
   if (r && r.path) {
     const ll = r.path;
     L.polyline(ll, { color: "#ffffff", weight: 9, opacity: 0.9, lineJoin: "round", interactive: false }).addTo(routeLayer);
-    L.polyline(ll, { color: css("--route"), weight: 5, opacity: 0.95, lineJoin: "round", interactive: false }).addTo(routeLayer);
+    if (r.ivl && !r.c.infeasible) {   // 계획 속도대로 달린다고 보고, 시간 비율로 경로를 나눠 색칠
+      const col = { w: css("--muted"), f: css("--route"), e: css("--start") };
+      splitPath(ll, r.ivl.segs.map(([, m, v]) => v * m / 60 / r.ivl.km)).forEach((part, i) =>
+        L.polyline(part, { color: col[r.ivl.segs[i][0]], weight: r.ivl.segs[i][0] === "w" ? 4 : 5.5, dashArray: r.ivl.segs[i][0] === "w" ? "7 6" : null, opacity: 0.95, lineJoin: "round", interactive: false }).addTo(routeLayer));
+    } else L.polyline(ll, { color: css("--route"), weight: 5, opacity: 0.95, lineJoin: "round", interactive: false }).addTo(routeLayer);
     const c = r.c;
     // 반환점은 출발지로 돌아오는 코스에서만 표시
     if (same && c.turn) L.marker(c.turn, { interactive: false, keyboard: false, zIndexOffset: 500,
       icon: L.divIcon({ className: "", iconSize: [0, 0], html: `<div class="turn-dot"></div><div class="turn-label">${c.turnLabel}${c.reps > 1 ? ` · ${c.reps}회` : ""}</div>` }) }).addTo(routeLayer);
     if (fit) map.fitBounds(L.latLngBounds([...ll, input.start.at, input.dest.at]), { padding: [40, 40], maxZoom: 16.5 });
   }
+  $("lgIvl").hidden = !(r && r.ivl); $("lgRoute").hidden = !!(r && r.ivl);
   if (!same) L.marker(input.dest.at, { icon: pinIcon("도착", "dest"), interactive: false }).addTo(routeLayer);
   L.marker(input.start.at, { icon: pinIcon(same ? "출발·도착" : "출발", ""), interactive: false }).addTo(routeLayer);
 }
@@ -586,7 +655,7 @@ function buildForm() {
   $("scenery").onclick = e => { const b = e.target.closest("button"); if (!b) return; const v = b.dataset.v;
     input.scenery = input.scenery.includes(v) ? input.scenery.filter(x => x !== v) : [...input.scenery, v]; update(true); };
   $("customOn").onchange = e => { input.customOn = e.target.checked; update(true); };
-  $("customPace").oninput = e => { const v = parseFloat(e.target.value); if (v >= 3 && v <= 20) { input.customPace = v; update(true, true); } };
+  $("customKmh").oninput = e => { const v = parseFloat(e.target.value); if (v >= 3 && v <= 25) { input.customKmh = v; update(true, true); } };
   $("weight").oninput = e => { const v = parseFloat(e.target.value); if (v >= 30 && v <= 150) { input.weight = v; update(false, true); Account.saveWeight(v); } };
   $("form").onsubmit = e => e.preventDefault();
 }
@@ -604,26 +673,36 @@ function syncForm() {
   for (const key of ["pace", "difficulty", "goal"])
     for (const b of $(key).children) b.setAttribute("aria-pressed", String(b.dataset.v === input[key] && !(key === "pace" && input.customOn)));
   for (const b of $("scenery").children) b.setAttribute("aria-pressed", String(input.scenery.includes(b.dataset.v)));
+  const walk = isWalk(), ivlBtn = $("difficulty").querySelector('[data-v="interval"]');
+  ivlBtn.disabled = walk;
+  ivlBtn.title = walk ? "걷기에서는 인터벌을 쓸 수 없어요" : "";
+  const k = curKmh();
+  $("diffHint").hidden = !(walk || input.difficulty === "interval");
+  $("diffHint").textContent = walk ? `걷기(${WALK_MAX_KMH} km/h 미만)에서는 인터벌을 쓸 수 없어요. 조깅이나 러닝을 고르면 켜져요.`
+    : `고강도 ${IVL.fastMin}분 ${(k + IVL.up).toFixed(1)} km/h · 저강도 ${IVL.slowMin}분 ${(k - IVL.down).toFixed(1)} km/h를 반복해요 (앞뒤 워밍업·쿨다운은 ${k.toFixed(1)} km/h).`;
   $("customOn").checked = input.customOn;
-  $("customPace").disabled = !input.customOn;
-  if (document.activeElement !== $("customPace")) $("customPace").value = input.customPace;
+  $("customKmh").disabled = !input.customOn;
+  if (document.activeElement !== $("customKmh")) $("customKmh").value = input.customKmh;
   if (document.activeElement !== $("weight")) $("weight").value = input.weight;
   syncPick();
 }
 
 /* ================== 8. 추천 (경로 생성은 Engine, 숫자는 Calc) ================== */
 let timer;
+const curKmh = () => Calc.speedKmh(input.pace, input.customOn ? input.customKmh : 0);
+const isWalk = () => curKmh() < WALK_MAX_KMH;
 function update(recompute, debounce = false) {
+  if (isWalk() && input.difficulty === "interval") input.difficulty = "flat";
   store.set("input", input);
   syncForm();
   clearTimeout(timer);
   if (!recompute) { results = results.map(withNumbers); renderResults(false); return; }
   $("status").textContent = "코스 계산 중...";
   timer = setTimeout(() => {
-    const kmh = Calc.speedKmh(input.pace, input.customOn ? input.customPace : 0);
+    const kmh = Calc.speedKmh(input.pace, input.customOn ? input.customKmh : 0);
     const avoid = new Set();
     results = DURATIONS.map(min => {
-      const c = Engine.plan(input.start.at, input.dest.at, Calc.distanceKm(kmh, min) * 1000,
+      const c = Engine.plan(input.start.at, input.dest.at, targetKm(kmh, min) * 1000,
         { scenery: input.scenery, difficulty: input.difficulty }, avoid);
       if (c.id) avoid.add(c.id);
       return withNumbers({ min, c });
@@ -631,13 +710,20 @@ function update(recompute, debounce = false) {
     renderResults(true);
   }, debounce ? 300 : 30);
 }
+const ivlOf = (kmh, min) => input.difficulty === "interval" && !isWalk() ? Calc.intervalPlan(min, kmh) : null;
+const targetKm = (kmh, min) => ivlOf(kmh, min)?.km ?? Calc.distanceKm(kmh, min);
 function withNumbers(r) {
-  const kmh = Calc.speedKmh(input.pace, input.customOn ? input.customPace : 0);
-  const met = Calc.baseMet(input.pace, kmh, input.customOn) + DIFFS[input.difficulty].metAdd;
+  const kmh = curKmh(), ivl = ivlOf(kmh, r.min);
+  const base = Calc.baseMet(input.pace, kmh, input.customOn);
+  // 인터벌은 구간마다 속도로 MET를 잡아 칼로리를 더함 (워밍업·쿨다운은 기본 페이스)
+  const kcal = ivl ? ivl.segs.reduce((a, [t, m, v]) => a + Calc.kcal(t === "w" ? base : Calc.baseMet(input.pace, v, true), input.weight, m), 0)
+    : Calc.kcal(base + DIFFS[input.difficulty].metAdd, input.weight, r.min);
+  const met = kcal / (input.weight * r.min / 60);
+  const target = targetKm(kmh, r.min), avg = target / (r.min / 60);
   const c = r.c || {};
   const km = c.m ? c.m / 1000 : 0;
-  return { ...r, kmh, met, target: Calc.distanceKm(kmh, r.min), km, estMin: km / kmh * 60,
-    kcal: Calc.kcal(met, input.weight, r.min), path: c.path, kmMarks: c.kmMarks || [],
+  return { ...r, kmh, met, ivl, target, km, estMin: km / avg * 60,
+    kcal, path: c.path, kmMarks: c.kmMarks || [],
     cls: c.kind === "hill" ? "hill" : "flat", name: c.name || "코스를 만들 수 없음" };
 }
 
@@ -675,14 +761,15 @@ function renderDetail(r) {
     $("detail").innerHTML = `<div class="side"><p class="alert">이 조건으로는 걸을 수 있는 경로를 찾지 못했어요. 출발지를 큰 길이나 공원 근처로 옮겨 보세요.</p></div>`;
     return;
   }
-  const ivl = input.difficulty === "interval" ? Calc.intervalPlan(r.min) : null;
+  const ivl = r.ivl;
   const t = TIPS[input.goal], ai = aiCache[aiKey(r)], d = shownDiff(r);
   const same = samePlace();
   $("detail").innerHTML = `
     <div class="detail-head">
       <div><h2>${esc(r.name)}</h2>
         <div class="sub">${esc(input.start.name)} → ${esc(same ? "같은 곳으로 복귀" : input.dest.name)} · ${KIND[c.kind] || ""} ${diffBadge(d)}</div></div>
-      <div class="actions"><button type="button" class="btn primary" id="done" ${c.infeasible ? "disabled" : ""}>완료 기록하기</button></div>
+      <div class="actions"><button type="button" class="btn primary" id="startRun" ${c.infeasible || Run.s ? "disabled" : ""}>운동 시작 (GPS 기록)</button>
+        <button type="button" class="btn" id="done" ${c.infeasible ? "disabled" : ""}>완료 기록하기</button></div>
     </div>
     ${c.infeasible ? `<p class="alert" style="margin:12px 18px 0">도착지까지 가장 짧은 길도 ${fmtKm(r.km)}라서 ${r.min}분 안에 도착하기 어려워요. 이 속도로 약 ${fmtMin(r.estMin)} 걸립니다. 지도에는 최단 경로를 표시했어요.</p>` : ""}
     <div class="kpis">
@@ -703,8 +790,8 @@ function renderDetail(r) {
           ${same && c.turn ? `<p class="hint" style="margin-top:8px">지도의 검은 마름모(반환)에서 같은 길로 돌아오세요.</p>` : ""}</div>
         ${ivl ? `<div><h3>인터벌 구간표</h3>
           <div class="ivl">${ivlBar(ivl)}</div>
-          <div class="legend"><span><i style="background:var(--line)"></i>워밍업/쿨다운</span><span><i style="background:var(--signal)"></i>빠르게 1분</span><span><i style="background:var(--accent-soft)"></i>천천히 2분</span></div>
-          <p class="hint" style="margin-top:4px">워밍업 ${fmtMin(ivl.warm)} → (빠르게 1분 + 천천히 2분) × ${ivl.sets}세트 → 쿨다운 ${fmtMin(ivl.cool)}</p></div>` : ""}
+          <div class="legend"><span><i style="background:var(--muted)"></i>워밍업·쿨다운 ${r.kmh.toFixed(1)} km/h</span><span><i style="background:var(--route)"></i>고강도 ${IVL.fastMin}분 ${ivl.fast.toFixed(1)} km/h</span><span><i style="background:var(--start)"></i>저강도 ${IVL.slowMin}분 ${ivl.slow.toFixed(1)} km/h</span></div>
+          <p class="hint" style="margin-top:4px">워밍업 ${fmtMin(ivl.warm)} → (고강도 ${IVL.fastMin}분 + 저강도 ${IVL.slowMin}분) × ${ivl.sets}세트 → 쿨다운 ${fmtMin(ivl.cool)}</p></div>` : ""}
       </div>
       <div class="side">
         <div id="tipbox">${ai ? aiHtml(ai) : `
@@ -719,14 +806,10 @@ function renderDetail(r) {
       </div>
     </div>`;
   $("done").onclick = () => addRecord(r);
+  $("startRun").onclick = () => Run.start(r);
   wireAi(r);
 }
-function ivlBar(p) {
-  const seg = (cls, m) => `<span class="${cls}" style="flex:${m}"></span>`;
-  let s = seg("w", p.warm);
-  for (let i = 0; i < p.sets; i++) s += seg("f", 1) + seg("e", 2);
-  return s + seg("w", p.cool);
-}
+function ivlBar(p) { return p.segs.map(([t, m]) => `<span class="${t}" style="flex:${m}"></span>`).join(""); }
 
 /* ================== 9. LLM: 코스 설명 · 팁 · 동기부여 (숫자는 코드가 넣는다) ================== */
 let sampleFn = null, aiCtl = null;
@@ -790,20 +873,23 @@ function stats(recs) {
 }
 function earned(recs) { const s = stats(recs); return BADGES.filter(b => b.test(s)).map(b => b.id); }
 
-async function addRecord(r) {
+function addRecord(r) {
+  return saveRecord({ courseName: r.name, min: r.min, km: +r.km.toFixed(2), kcal: Math.round(r.kcal), difficulty: input.difficulty, pace: input.pace });
+}
+async function saveRecord(fields) {   // 저장하면 true
   const before = new Set(earned(records));
-  const rec = { id: String(Date.now()), date: dayKey(new Date()), courseName: r.name,
-    min: r.min, km: +r.km.toFixed(2), kcal: Math.round(r.kcal), difficulty: input.difficulty, pace: input.pace };
+  const rec = { id: String(Date.now()), date: dayKey(new Date()), ...fields };
   if (Account.user) {
     try { const j = await Account.api("POST", "/api/workouts", rec); records = [...records, ...j.workouts]; }
-    catch (e) { toast(e.message || "기록을 저장하지 못했어요"); return; }
+    catch (e) { toast(e.message || "기록을 저장하지 못했어요"); return false; }
   } else {
     records = [...records, rec];
     store.set("records", records);
   }
   const fresh = BADGES.filter(b => earned(records).includes(b.id) && !before.has(b.id));
-  toast(fresh.length ? `새 배지: ${fresh.map(b => b.t).join(", ")}` : `${r.name} ${fmtKm(r.km)} 기록했어요`);
+  toast(fresh.length ? `새 배지: ${fresh.map(b => b.t).join(", ")}` : `${fields.courseName} ${fmtKm(fields.km)} 기록했어요`);
   renderLog();
+  return true;
 }
 async function removeRecord(id) {
   if (Account.user) {
@@ -859,12 +945,13 @@ const ROUTINES = {
   healing: [[0, 20, "flat"], [2, 40, "flat"], [5, 60, "flat"]],
 };
 function renderRoutine() {
-  const kmh = Calc.speedKmh(input.pace, input.customOn ? input.customPace : 0);
+  const kmh = Calc.speedKmh(input.pace, input.customOn ? input.customKmh : 0);
   const plan = ROUTINES[input.goal];
   $("routineHint").textContent = `${GOALS[input.goal]} 목표 · ${input.customOn ? fmtPace(kmh) : PACES[input.pace].label} 기준. 목표와 페이스는 코스 추천 탭에서 바꿀 수 있어요.`;
   $("routine").innerHTML = ["월", "화", "수", "목", "금", "토", "일"].map((n, i) => {
     const p = plan.find(x => x[0] === i);
-    return p ? `<div class="on"><span class="d">${n}</span><b>${fmtMin(p[1])}</b><span>${DIFFS[p[2]].label}</span><span class="num">${fmtKm(Calc.distanceKm(kmh, p[1]))}</span></div>`
+    const d = p && p[2] === "interval" && isWalk() ? "flat" : p?.[2];   // 걷기는 인터벌 대신 평지
+    return p ? `<div class="on"><span class="d">${n}</span><b>${fmtMin(p[1])}</b><span>${DIFFS[d].label}</span><span class="num">${fmtKm(d === "interval" ? Calc.intervalPlan(p[1], kmh).km : Calc.distanceKm(kmh, p[1]))}</span></div>`
              : `<div><span class="d">${n}</span><span style="color:var(--muted)">휴식</span></div>`;
   }).join("");
 }
@@ -872,7 +959,159 @@ function renderRoutine() {
 let toastT;
 function toast(msg) { const t = $("toast"); t.textContent = msg; t.hidden = false; clearTimeout(toastT); toastT = setTimeout(() => t.hidden = true, 2600); }
 
-/* ================== 11. 계정 (Vercel 백엔드가 있을 때만 켜짐) ================== */
+/* ================== 11. 실시간 기록 (GPS로 실제 이동 거리 측정) ================== */
+// 정확도가 나쁜 점·제자리 흔들림·순간이동은 버리고, 남은 점 사이 거리를 더한다
+const GPS = { ACC: 35, STEP: 5, MAX_MS: 8, OFF: 40, KEEP_H: 6 };
+const fmtClock = ms => { const s = Math.floor(ms / 1000), h = Math.floor(s / 3600), m = Math.floor(s / 60) % 60, ss = String(s % 60).padStart(2, "0");
+  return h ? `${h}:${String(m).padStart(2, "0")}:${ss}` : `${m}:${ss}`; };
+function distToPath(p, path) {   // 점에서 코스 선까지 최단 거리(m), 짧은 거리라 평면 근사
+  const k = Math.cos(p[0] * Math.PI / 180) * 111320, xy = q => [(q[1] - p[1]) * k, (q[0] - p[0]) * 110540];
+  let best = Infinity;
+  for (let i = 1; i < path.length; i++) {
+    const a = xy(path[i - 1]), b = xy(path[i]), dx = b[0] - a[0], dy = b[1] - a[1], l2 = dx * dx + dy * dy;
+    const t = l2 ? Math.max(0, Math.min(1, -(a[0] * dx + a[1] * dy) / l2)) : 0;
+    best = Math.min(best, Math.hypot(a[0] + t * dx, a[1] + t * dy));
+  }
+  return best;
+}
+const Run = {
+  s: null, watch: null, tick: null, wake: null, layer: null, line: null, me: null, ring: null,
+  follow: true, here: null, off: 0, rejects: 0, armed: null,
+  start(r) {
+    if (this.s) return;
+    if (!navigator.geolocation) { toast("이 브라우저에서는 위치를 쓸 수 없어요"); return; }
+    this.s = { name: r.name, path: r.path || [], difficulty: input.difficulty, startedAt: Date.now(),
+      started: false, paused: false, runStart: null, elapsed: 0, m: 0, last: null, trail: [[]], acc: null };
+    this.save();
+    this.begin();
+  },
+  begin() {   // 새로 시작할 때와 새로고침 뒤 이어서 기록할 때 모두
+    document.body.classList.add("running"); $("run").hidden = false;
+    if (!this.layer) {
+      this.layer = L.layerGroup().addTo(map);
+      map.on("dragstart", () => { this.follow = false; });
+    }
+    this.layer.clearLayers();
+    if (this.s.path.length > 1) L.polyline(this.s.path, { color: css("--route"), weight: 3, opacity: 0.6, dashArray: "6 6", interactive: false }).addTo(this.layer);
+    this.line = L.polyline([], { color: css("--dest"), weight: 5, opacity: 0.95, lineJoin: "round", interactive: false }).addTo(this.layer);
+    this.me = this.ring = null; this.here = null; this.follow = true; this.rejects = 0;
+    this.watch = navigator.geolocation.watchPosition(p => this.fix(p), e => this.fail(e), { enableHighAccuracy: true, maximumAge: 0, timeout: 20000 });
+    this.tick = setInterval(() => this.render(), 1000);
+    this.lock(); this.draw(); this.render();
+    if (results[selected]) renderDetail(results[selected]);
+    if (!$("view-plan").hidden) $("map").scrollIntoView({ behavior: "smooth", block: "center" });
+  },
+  async lock() {   // 운동 중 화면 꺼짐 방지 (화면이 꺼지면 브라우저가 GPS를 멈춤)
+    try { if (navigator.wakeLock && !this.wake) { this.wake = await navigator.wakeLock.request("screen"); this.wake.addEventListener("release", () => { this.wake = null; }); } } catch {}
+  },
+  elapsedMs() { const s = this.s; return s.elapsed + (s.runStart ? Date.now() - s.runStart : 0); },
+  fix(p) {
+    const s = this.s; if (!s) return;
+    const c = p.coords, at = [c.latitude, c.longitude], t = p.timestamp || Date.now();
+    s.acc = c.accuracy; this.here = at;
+    this.off = s.path.length > 1 ? distToPath(at, s.path) : 0;
+    this.drawMe(at, c.accuracy);
+    if (c.accuracy > GPS.ACC || s.paused) return this.render();
+    const seg = s.trail[s.trail.length - 1];
+    if (!s.started) {   // 첫 정확한 위치에서 시계 시작
+      s.started = true; s.runStart = Date.now();
+    }
+    if (!s.last) { s.last = { at, t }; seg.push(at); return this.commit(); }
+    const d = Engine.distM(s.last.at, at), dt = Math.max(1, (t - s.last.t) / 1000);
+    if (d < Math.max(GPS.STEP, c.accuracy * 0.5)) return this.render();   // 제자리 흔들림
+    if (d / dt > GPS.MAX_MS) {   // 순간이동: 3번 연속이면 그 위치를 새 기준으로 (거리는 더하지 않음)
+      if (++this.rejects < 3) return this.render();
+      this.rejects = 0; s.last = { at, t }; s.trail.push([at]); return this.commit();
+    }
+    this.rejects = 0;
+    s.m += d; s.last = { at, t }; seg.push(at);
+    this.commit();
+  },
+  commit() { this.save(); this.draw(); this.render(); },
+  fail(e) {
+    if (e.code === 1) {
+      toast("위치 권한이 없어 기록할 수 없어요. 브라우저 설정에서 위치를 허용해 주세요");
+      if (!this.s.started) this.end();
+      return;
+    }
+    $("runState").textContent = "GPS 신호를 찾는 중이에요. 하늘이 트인 곳으로 이동해 보세요";
+  },
+  drawMe(at, acc) {
+    if (!this.me) {
+      this.ring = L.circle(at, { radius: acc, color: css("--dest"), weight: 1, fillOpacity: 0.12, interactive: false }).addTo(this.layer);
+      this.me = L.marker(at, { interactive: false, keyboard: false, zIndexOffset: 1000, icon: L.divIcon({ className: "", iconSize: [0, 0], html: `<div class="me-dot"></div>` }) }).addTo(this.layer);
+    } else { this.me.setLatLng(at); this.ring.setLatLng(at).setRadius(acc); }
+    if (this.follow && !$("view-plan").hidden) map.panTo(at, { animate: true });
+  },
+  draw() { if (this.line) this.line.setLatLngs(this.s.trail.filter(x => x.length > 1)); },
+  stats() {
+    const ms = this.elapsedMs(), min = ms / 60000, km = this.s.m / 1000, kmh = min > 0 ? km / (min / 60) : 0;
+    // 칼로리는 실제 속도로 MET를 다시 잡는다 (거의 안 움직였으면 고른 페이스 기준)
+    const met = (kmh >= 2 ? Calc.baseMet(input.pace, kmh, true) : Calc.baseMet(input.pace, Calc.speedKmh(input.pace, input.customOn ? input.customKmh : 0), input.customOn))
+      + DIFFS[this.s.difficulty].metAdd;
+    return { ms, min, km, kmh, kcal: Calc.kcal(met, input.weight, min) };
+  },
+  render() {
+    const s = this.s; if (!s) return;
+    const x = this.stats();
+    $("runTime").textContent = fmtClock(x.ms);
+    $("runKm").textContent = fmtKm(x.km);
+    $("runPace").textContent = x.km >= 0.05 ? fmtPace(x.kmh) : "-";
+    $("runKcal").textContent = fmtKcal(x.kcal);
+    $("runPause").textContent = s.paused ? "다시 시작" : "일시정지";
+    const acc = s.acc ? ` · 정확도 ±${Math.round(s.acc)} m` : "";
+    const [msg, cls] = !s.started ? [`GPS 잡는 중${acc}. 위치가 정확해지면 시계가 시작돼요`, ""]
+      : s.paused ? ["일시정지 중이에요. 이 동안 움직인 거리는 더하지 않아요", ""]
+      : s.acc > GPS.ACC ? [`GPS 신호가 약해 거리 계산을 잠시 멈췄어요${acc}`, "warn"]
+      : this.off > GPS.OFF ? [`코스에서 ${Math.round(this.off)} m 벗어났어요. 거리는 실제 이동으로 계산해요`, "warn"]
+      : [`${s.name} 기록 중${acc}`, "ok"];
+    $("runState").textContent = msg; $("runState").className = `run-state ${cls}`;
+  },
+  togglePause() {
+    const s = this.s;
+    if (s.paused) { s.paused = false; if (s.started) s.runStart = Date.now(); }
+    else { s.elapsed = this.elapsedMs(); s.runStart = null; s.paused = true; s.last = null; s.trail.push([]); }
+    this.save(); this.render();
+  },
+  arm(btn, label, fn) {   // 실수로 누르는 것 방지: 3초 안에 한 번 더 눌러야 실행
+    if (this.armed === btn) { this.armed = null; return fn(); }
+    const old = btn.textContent; this.armed = btn; btn.textContent = label;
+    setTimeout(() => { if (this.armed === btn) this.armed = null; btn.textContent = old; }, 3000);
+  },
+  async finish() {
+    const x = this.stats();
+    if (x.min < 1) { toast("1분 미만이라 저장하지 않았어요"); return this.end(); }
+    const ok = await saveRecord({ courseName: this.s.name, min: Math.round(x.min), km: +x.km.toFixed(2), kcal: Math.round(x.kcal),
+      difficulty: this.s.difficulty, pace: x.kmh < 6.5 ? "walk" : x.kmh < 9 ? "jog" : "run" });
+    if (ok) this.end();
+  },
+  end() {
+    if (this.watch != null) navigator.geolocation.clearWatch(this.watch);
+    clearInterval(this.tick);
+    try { this.wake?.release(); } catch {}
+    this.watch = null; this.wake = null; this.s = null; this.armed = null;
+    this.layer?.clearLayers();
+    store.set("run", null);
+    document.body.classList.remove("running"); $("run").hidden = true;
+    $("runStop").textContent = "종료·저장"; $("runCancel").textContent = "취소";
+    if (results[selected]) renderDetail(results[selected]);
+  },
+  save() { store.set("run", this.s); },
+  wire() {
+    $("runPause").onclick = () => this.togglePause();
+    $("runFollow").onclick = () => { this.follow = true; if (this.here) map.setView(this.here, Math.max(map.getZoom(), 16)); };
+    $("runStop").onclick = e => this.arm(e.currentTarget, "다시 눌러 저장", () => this.finish());
+    $("runCancel").onclick = e => this.arm(e.currentTarget, "다시 눌러 버림", () => { this.end(); toast("기록을 버렸어요"); });
+    document.addEventListener("visibilitychange", () => { if (this.s && document.visibilityState === "visible") { this.lock(); this.render(); } });
+    // 새로고침·탭 종료 뒤 돌아오면 이어서 기록 (꺼져 있던 동안은 직선 거리로 이어짐)
+    const saved = store.get("run", null);
+    if (saved && saved.startedAt && Date.now() - saved.startedAt < GPS.KEEP_H * 3600e3 && Array.isArray(saved.trail)) {
+      this.s = saved; this.begin(); toast("진행 중이던 운동을 이어서 기록해요");
+    } else store.set("run", null);
+  },
+};
+
+/* ================== 12. 계정 (Vercel 백엔드가 있을 때만 켜짐) ================== */
 const Account = {
   user: null, available: false, mode: "login", wTimer: null,
   async api(method, url, body) {
@@ -963,7 +1202,7 @@ const Account = {
   },
 };
 
-/* ================== 12. 탭 · 시작 ================== */
+/* ================== 13. 탭 · 시작 ================== */
 document.querySelector(".tabs").onclick = e => {
   const b = e.target.closest("button"); if (!b) return;
   for (const x of document.querySelectorAll(".tabs button")) x.setAttribute("aria-selected", String(x === b));
@@ -978,6 +1217,7 @@ update(true);
 Account.wire();
 Account.render();
 renderLog();
+Run.wire();
 Account.init();
 
 // claude.ai에서 열면 AI 설명 버튼이 켜지고, 일반 호스팅에서는 기본 팁만 표시
