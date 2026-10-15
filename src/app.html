@@ -1,7 +1,7 @@
 <title>Run &amp; Walk 코스 메이커</title>
 <meta name="claude:viewport-fit-sides" content="cover">
 <link rel="preconnect" href="https://fonts.googleapis.com">
-<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Gothic+A1:wght@500;700;800&family=IBM+Plex+Sans+KR:wght@400;500;600&family=IBM+Plex+Mono:wght@500;600&display=swap">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Gothic+A1:wght@500;700;800&family=IBM+Plex+Sans+KR:wght@400;500;600&family=IBM+Plex+Mono:wght@500;600&family=Barlow+Condensed:ital,wght@1,700;1,800&display=swap">
 <style>
 /*__LEAFLET_CSS__*/
 </style>
@@ -16,6 +16,8 @@
   --f-display:"Gothic A1","Apple SD Gothic Neo","Malgun Gothic",sans-serif;
   --f-body:"IBM Plex Sans KR","Apple SD Gothic Neo","Malgun Gothic",sans-serif;
   --f-num:"IBM Plex Mono",ui-monospace,"Consolas",monospace;
+  --f-big:"Barlow Condensed","Gothic A1",sans-serif;   /* 큰 숫자: 좁고 굵은 이탤릭 */
+  --volt:#D4FF00; --on-volt:#0A0A0A;
   --r:10px;
 }
 @media (prefers-color-scheme:dark){:root:not([data-theme="light"]){
@@ -56,7 +58,7 @@ header.top p{margin:4px 0 0;color:var(--muted);max-width:62ch}
 .panel{background:var(--surface);border:1px solid var(--line);border-radius:var(--r);padding:18px;display:flex;flex-direction:column;gap:16px}
 @media (min-width:861px){.panel.sticky{position:sticky;top:calc(env(safe-area-inset-top,0px) + 12px)}}
 .field{display:flex;flex-direction:column;gap:6px}
-.label{font-size:12px;font-weight:600;letter-spacing:.06em;color:var(--muted);text-transform:uppercase}
+.label{font-size:12px;font-weight:600;letter-spacing:.06em;color:var(--muted)}
 select,input[type=number],input[type=text]{background:var(--bg);border:1px solid var(--line);border-radius:8px;padding:9px 10px;width:100%}
 .seg{display:grid;grid-auto-flow:column;grid-auto-columns:1fr;gap:4px;background:var(--sunk);padding:4px;border-radius:9px}
 .seg button{border:0;background:transparent;padding:8px 4px;border-radius:6px;cursor:pointer;font-weight:600;font-size:14px;color:var(--muted);min-width:0}
@@ -68,6 +70,19 @@ select,input[type=number],input[type=text]{background:var(--bg);border:1px solid
 .chip[aria-pressed="true"]{background:var(--accent);border-color:var(--accent);color:var(--on-accent)}
 .inline{display:flex;align-items:center;gap:8px;font-size:14px;color:var(--muted);flex-wrap:wrap}
 .hint{font-size:12.5px;color:var(--muted);margin:0}
+
+/* 조건 패널: 데스크톱은 항상 펼침, 모바일은 요약 한 줄로 접힘 */
+.cond-more{display:flex;flex-direction:column;gap:16px}
+.condbar{display:none}
+@media (max-width:860px){
+  .condbar{display:flex;align-items:center;gap:10px;width:100%;text-align:left;border:1px solid var(--line);background:var(--bg);border-radius:8px;padding:10px 12px;cursor:pointer}
+  .condbar .condsum{flex:1;min-width:0;font-size:13.5px;color:var(--muted);overflow-wrap:anywhere}
+  .condbar .condsum b{color:var(--ink);font-weight:600}
+  .condbar .more{flex:none;font-size:13px;font-weight:700;color:var(--accent);white-space:nowrap}
+  .condbar .more::after{content:"";display:inline-block;width:6px;height:6px;margin-left:6px;border:solid currentColor;border-width:0 2px 2px 0;transform:translateY(-2px) rotate(45deg)}
+  .condbar[aria-expanded="true"] .more::after{transform:translateY(1px) rotate(-135deg)}
+  #form:not(.open) .cond-more{display:none}
+}
 
 /* 출발·도착 */
 .place{display:flex;align-items:center;gap:10px;padding:10px 12px;border:1px solid var(--line);border-radius:8px;background:var(--bg)}
@@ -84,10 +99,18 @@ select,input[type=number],input[type=text]{background:var(--bg);border:1px solid
 .target b{color:var(--ink)}
 .status{margin-left:auto;font-size:12.5px;color:var(--accent);font-weight:600}
 .cards{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:10px}
-@media (max-width:560px){.cards{grid-template-columns:1fr}}
+@media (max-width:560px){
+  .cards{gap:8px}
+  .card{padding:10px;gap:6px}
+  .card .min{font-size:32px}
+  .card .name{display:none}
+  .card .stats{flex-direction:column;gap:0;font-size:12px}
+  .card .tags .badge:not(.warn){display:none}
+  .card .tags:not(:has(.warn)){display:none}
+}
 .card{background:var(--surface);border:1px solid var(--line);border-radius:var(--r);padding:14px;text-align:left;cursor:pointer;display:flex;flex-direction:column;gap:8px;min-width:0}
 .card[aria-pressed="true"]{border-color:var(--route);box-shadow:inset 0 0 0 1px var(--route)}
-.card .min{font-family:var(--f-num);font-size:30px;font-weight:600;line-height:1}
+.card .min{font-family:var(--f-big);font-style:italic;font-size:40px;font-weight:800;line-height:.9}
 .card .min small{font-family:var(--f-body);font-size:14px;color:var(--muted);margin-left:2px}
 .ticks{height:6px;background:repeating-linear-gradient(90deg,var(--line) 0 1px,transparent 1px 8px);position:relative;border-radius:2px}
 .ticks i{position:absolute;inset:0 auto 0 0;background:var(--route);border-radius:2px;opacity:.85}
@@ -129,7 +152,7 @@ select,input[type=number],input[type=text]{background:var(--bg);border:1px solid
 .detail-head h2{font-size:21px}
 .detail-head .sub{color:var(--muted);font-size:13.5px;margin-top:2px;display:flex;gap:6px;flex-wrap:wrap;align-items:center}
 .kpis{display:grid;grid-template-columns:repeat(5,minmax(0,1fr));border-bottom:1px solid var(--line)}
-@media (max-width:700px){.kpis{grid-template-columns:repeat(2,minmax(0,1fr))}}
+@media (max-width:700px){.kpis{grid-template-columns:repeat(2,minmax(0,1fr))}.kpi:last-child{grid-column:1/-1}.kpi:nth-child(2n){border-right:0}}
 .kpi{padding:12px 18px;border-right:1px solid var(--line);border-bottom:1px solid var(--line);margin-bottom:-1px}
 .kpi:last-child{border-right:0}
 .kpi .k{font-size:11.5px;letter-spacing:.06em;color:var(--muted);font-weight:600}
@@ -161,6 +184,7 @@ ul.tips{margin:0;padding-left:18px;display:flex;flex-direction:column;gap:4px;fo
 .actions{display:flex;gap:8px;flex-wrap:wrap}
 .btn{border:1px solid var(--line);background:var(--surface);border-radius:8px;padding:9px 14px;cursor:pointer;font-weight:600;font-size:14px}
 .btn.primary{background:var(--accent);border-color:var(--accent);color:var(--on-accent)}
+.btn.go{background:var(--volt);border-color:var(--volt);color:var(--on-volt);font-weight:800}
 .btn:disabled{opacity:.5;cursor:default}
 .alert{margin:0;padding:10px 12px;border-radius:8px;background:var(--signal-soft);color:var(--ink);font-size:14px}
 
@@ -202,25 +226,91 @@ dialog#authDlg::backdrop{background:rgba(0,0,0,.35)}
 #authOut,#authIn{display:flex;flex-direction:column;gap:14px}
 .dlg-head{display:flex;justify-content:space-between;align-items:center}
 .dlg-head h2{font-size:19px}
-.toast{position:fixed;left:50%;bottom:calc(20px + env(safe-area-inset-bottom,0px));transform:translateX(-50%);background:var(--ink);color:var(--bg);padding:10px 16px;border-radius:999px;font-size:14px;font-weight:600;z-index:1000;max-width:calc(100% - 32px)}
+.toast{position:fixed;left:50%;bottom:calc(20px + env(safe-area-inset-bottom,0px));transform:translateX(-50%);background:var(--ink);color:var(--bg);padding:10px 16px;border-radius:999px;font-size:14px;font-weight:600;z-index:1300;max-width:calc(100% - 32px)}
 .note{font-size:12px;color:var(--muted);border-top:1px solid var(--line);padding-top:12px;margin:0}
 
-/* 실시간 기록: 화면 아래 고정 패널 */
-.run{position:fixed;left:0;right:0;bottom:0;z-index:1100;background:var(--surface);border-top:1px solid var(--line);box-shadow:0 -4px 16px rgba(0,0,0,.14);
-  padding:12px max(16px,env(safe-area-inset-right,0px)) calc(12px + env(safe-area-inset-bottom,0px)) max(16px,env(safe-area-inset-left,0px))}
-.run-in{max-width:1180px;margin:0 auto;display:flex;flex-direction:column;gap:8px}
-.run-stats{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:8px}
-.run-stats .k{font-size:11.5px;color:var(--muted);font-weight:600}
-.run-stats .v{font-family:var(--f-num);font-size:22px;font-weight:600;line-height:1.2;white-space:nowrap}
-.run-stats .v.kcal{color:var(--signal)}
-@media (max-width:420px){.run-stats .v{font-size:18px}}
-.run-state{font-size:13px;color:var(--muted);margin:0}
-.run-state.ok{color:var(--accent)}
-.run-state.warn{color:var(--warn)}
-.run .actions{flex-wrap:nowrap;gap:6px}
-.run .actions .btn{flex:1;padding:9px 4px;white-space:nowrap;min-width:0}
-body.running{padding-bottom:210px}
-body.running .toast{bottom:calc(190px + env(safe-area-inset-bottom,0px))}
+/* 실시간 기록: 전체 화면 러닝 모드 (항상 어두운 바탕 + 형광 강조, 큰 숫자 하나가 주인공) */
+.runscr{--rs-bg:#0A0A0A;--rs-ink:#F5F5F5;--rs-mute:#8E8E8E;--rs-line:#2A2A2A;
+  position:fixed;inset:0;z-index:1100;background:var(--rs-bg);color:var(--rs-ink);display:flex;flex-direction:column;
+  padding:calc(14px + env(safe-area-inset-top,0px)) max(16px,env(safe-area-inset-right,0px)) calc(18px + env(safe-area-inset-bottom,0px)) max(16px,env(safe-area-inset-left,0px))}
+.rs-head{display:flex;justify-content:space-between;align-items:flex-start;gap:12px;max-width:720px;width:100%;margin:0 auto}
+.rs-title{display:flex;flex-direction:column;gap:4px;min-width:0}
+.rs-name{font-weight:700;font-size:15px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.rs-gps{font-size:12px;color:var(--rs-mute)}
+.rs-gps::before{content:"";display:inline-block;width:7px;height:7px;border-radius:50%;background:var(--rs-mute);margin-right:6px;vertical-align:1px}
+.rs-gps.good::before{background:var(--volt)}
+.rs-gps.bad::before{background:#FF5A3C}
+.rs-tools{display:flex;gap:6px;flex:none;flex-wrap:wrap;justify-content:flex-end}
+.rs-chip{border:1px solid var(--rs-line);background:#161616;color:var(--rs-ink);border-radius:999px;padding:7px 12px;font-size:13px;font-weight:600;cursor:pointer}
+.rs-chip[aria-pressed="false"]{color:var(--rs-mute);text-decoration:line-through}
+.rs-body{flex:1;display:flex;flex-direction:column;justify-content:center;gap:28px;min-height:0;max-width:720px;width:100%;margin:0 auto}
+.rs-big{text-align:center}
+.rs-big .v{font-family:var(--f-big);font-style:italic;font-weight:800;font-size:clamp(104px,32vw,200px);line-height:.85;letter-spacing:-.01em}
+.rs-big .k{font-size:15px;color:var(--rs-mute);font-weight:600;margin-top:8px}
+.rs-row{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));text-align:center;gap:8px}
+.rs-row .v{font-family:var(--f-big);font-style:italic;font-weight:700;font-size:clamp(30px,9vw,44px);line-height:1}
+.rs-row .k{font-size:12px;color:var(--rs-mute);margin-top:6px}
+.rs-map{display:none;flex:1;min-height:0;border-radius:14px;overflow:hidden}
+.rs-map #map{height:100%}
+.runscr.mapview .rs-map{display:block}
+.runscr.mapview .rs-body{justify-content:flex-start;gap:12px;padding-top:12px}
+.runscr.mapview .rs-big{display:flex;align-items:baseline;justify-content:center;gap:10px}
+.runscr.mapview .rs-big .v{font-size:64px}
+.runscr.mapview .rs-row .v{font-size:26px}
+.rs-state{margin:0;text-align:center;font-size:13px;color:var(--rs-mute);min-height:1.6em}
+.rs-state.warn{color:#FFB547}
+.rs-ctrl{display:flex;justify-content:center;align-items:center;gap:36px;padding:14px 0 26px}
+.rs-btn{width:84px;height:84px;border-radius:50%;border:0;cursor:pointer;display:grid;place-items:center;position:relative;flex:none;touch-action:none;-webkit-user-select:none;user-select:none;-webkit-touch-callout:none}
+.rs-btn svg{width:30px;height:30px;fill:currentColor}
+.rs-btn.go{background:var(--volt);color:var(--on-volt)}
+.rs-btn.stop{background:#F5F5F5;color:#0A0A0A}
+.rs-btn .lbl{position:absolute;top:100%;left:50%;transform:translateX(-50%);margin-top:8px;font-size:12px;color:var(--rs-mute);white-space:nowrap}
+.rs-btn.stop::after{content:"";position:absolute;inset:-7px;border-radius:50%;pointer-events:none;
+  background:conic-gradient(var(--volt) calc(var(--p,0) * 1turn),transparent 0);
+  -webkit-mask:radial-gradient(farthest-side,transparent calc(100% - 5px),#000 0);mask:radial-gradient(farthest-side,transparent calc(100% - 5px),#000 0)}
+.runscr:not(.paused) #runStop,.runscr:not(.paused) #runResume,.runscr:not(.paused) #runCancel{display:none}
+.runscr.paused #runPause{display:none}
+.rs-discard{align-self:center;border:0;background:none;color:var(--rs-mute);font-size:13px;text-decoration:underline;cursor:pointer;padding:4px 8px}
+.rs-count{position:absolute;inset:0;background:var(--volt);color:var(--on-volt);display:grid;place-items:center;z-index:5}
+.rs-count span{font-family:var(--f-big);font-style:italic;font-weight:800;font-size:clamp(180px,55vw,320px);line-height:1}
+@media (prefers-reduced-motion:no-preference){.rs-count span{animation:rs-pop .9s ease-out}}
+@keyframes rs-pop{from{transform:scale(1.25);opacity:.4}to{transform:scale(1);opacity:1}}
+.rs-sum{position:absolute;inset:0;z-index:6;background:var(--rs-bg);overflow-y:auto;
+  padding:calc(20px + env(safe-area-inset-top,0px)) max(16px,env(safe-area-inset-right,0px)) calc(24px + env(safe-area-inset-bottom,0px)) max(16px,env(safe-area-inset-left,0px))}
+.rs-sum-in{max-width:560px;margin:0 auto;display:flex;flex-direction:column;gap:22px}
+.rs-sum .date{margin:0;color:var(--rs-mute);font-size:13px}
+.rs-sum h2{font-size:22px;margin-top:2px}
+.rs-sum .rs-big{text-align:left}
+.rs-sum .rs-row{text-align:left;border-top:1px solid var(--rs-line);padding-top:16px}
+.rs-sum h3{font-size:15px;margin:0}
+.splits{display:flex;flex-direction:column;gap:8px}
+.sp{display:grid;grid-template-columns:52px minmax(0,1fr) 64px;gap:10px;align-items:center;font-size:14px}
+.sp .n{color:var(--rs-mute);font-family:var(--f-num);font-size:13px}
+.sp .bar{height:10px;background:#1C1C1C;border-radius:5px;overflow:hidden}
+.sp .bar i{display:block;height:100%;background:var(--volt);border-radius:5px}
+.sp .p{text-align:right;font-family:var(--f-big);font-style:italic;font-weight:700;font-size:20px}
+.splits .none{margin:0;color:var(--rs-mute);font-size:14px}
+.rs-done{background:var(--volt);color:var(--on-volt);border:0;border-radius:999px;padding:16px;font-size:16px;font-weight:800;cursor:pointer}
+body.running{overflow:hidden}
+/* 모바일 하단 시작 바 */
+.startbar{display:none}
+@media (max-width:860px){
+  .startbar:not([hidden]){display:flex;position:fixed;left:0;right:0;bottom:0;z-index:900;align-items:center;gap:12px;background:var(--surface);border-top:1px solid var(--line);box-shadow:0 -4px 16px rgba(0,0,0,.1);
+    padding:10px max(16px,env(safe-area-inset-right,0px)) calc(10px + env(safe-area-inset-bottom,0px)) max(16px,env(safe-area-inset-left,0px))}
+  .startbar .sb-info{flex:1;min-width:0;display:flex;flex-direction:column}
+  .startbar .sb-info b{font-family:var(--f-big);font-style:italic;font-weight:800;font-size:26px;line-height:1}
+  .startbar .sb-info span{font-size:12.5px;color:var(--muted);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+  .startbar .btn{padding:13px 28px;border-radius:999px;font-size:16px}
+  body.has-startbar{padding-bottom:96px}
+  body.has-startbar .toast{bottom:calc(84px + env(safe-area-inset-bottom,0px))}
+}
+/* 기록 탭: 이번 주 거리를 큰 숫자로 */
+.wk{display:flex;flex-direction:column;gap:14px}
+.wk-big .v{font-family:var(--f-big);font-style:italic;font-weight:800;font-size:clamp(72px,16vw,104px);line-height:.85}
+.wk-big .k{color:var(--muted);font-weight:600;font-size:14px;margin-top:6px}
+.wk-row{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:8px;border-top:1px solid var(--line);padding-top:12px}
+.wk-row .v{font-family:var(--f-big);font-style:italic;font-weight:700;font-size:28px;line-height:1.1}
+.wk-row .k{font-size:12px;color:var(--muted)}
 .me-dot{width:16px;height:16px;border-radius:50%;background:var(--dest);border:3px solid #fff;box-shadow:0 0 0 1px rgba(0,0,0,.25),0 1px 4px rgba(0,0,0,.35);position:absolute;left:-8px;top:-8px}
 .me-arrow{position:absolute;left:-15px;top:-15px;width:30px;height:30px;transform:rotate(var(--h,0deg));filter:drop-shadow(0 1px 2px rgba(0,0,0,.45))}
 .me-arrow svg{display:block;width:100%;height:100%}
@@ -255,6 +345,9 @@ body.running .toast{bottom:calc(190px + env(safe-area-inset-bottom,0px))}
           <button type="button" id="locBtn">현재 위치</button>
         </div>
       </div>
+      <button type="button" class="condbar" id="condToggle" aria-expanded="false" aria-controls="condMore">
+        <span class="condsum" id="condSum"></span><span class="more">조건 바꾸기</span></button>
+      <div class="cond-more" id="condMore">
       <div class="field">
         <span class="label">도착지</span>
         <div class="place"><span class="pin" style="background:var(--dest)"></span><span class="nm" id="destName"></span><span class="tag" id="destTag"></span></div>
@@ -288,6 +381,7 @@ body.running .toast{bottom:calc(190px + env(safe-area-inset-bottom,0px))}
         <input type="number" id="weight" min="30" max="150" step="1" value="65">
       </div>
       <p class="hint">조건을 바꾸면 코스를 바로 다시 계산합니다. 입력값은 이 브라우저에만 저장돼요.</p>
+      </div>
     </form>
 
     <div class="results">
@@ -305,7 +399,7 @@ body.running .toast{bottom:calc(190px + env(safe-area-inset-bottom,0px))}
         <div class="maplegend">
           <span id="lgRoute"><i style="background:var(--route)"></i>추천 코스</span>
           <span id="lgIvl" hidden><i style="background:var(--muted)"></i>워밍업·쿨다운 <i style="background:var(--route);margin-left:8px"></i>고강도 <i style="background:var(--start);margin-left:8px"></i>저강도</span>
-          <span><i style="background:var(--dest)"></i>내 이동 경로 (운동 중)</span>
+          <span id="lgRun" hidden><i style="background:var(--volt);outline:2px solid #0A0A0A"></i>내 이동 경로</span>
           <span><i style="background:var(--map-park)"></i>공원</span>
           <span><i style="background:var(--map-water)"></i>물</span>
           <span><i style="background:transparent;border:1.5px dashed var(--map-bound)"></i>송도동 경계</span>
@@ -323,7 +417,7 @@ body.running .toast{bottom:calc(190px + env(safe-area-inset-bottom,0px))}
       <div class="panel">
         <h2 style="font-size:18px">이번 주 기록</h2>
         <p class="hint" id="syncHint"></p>
-        <div class="sum" id="sum"></div>
+        <div class="wk" id="sum"></div>
         <div class="chart" id="chart"></div>
         <div class="tablewrap" id="logtable"></div>
       </div>
@@ -338,20 +432,48 @@ body.running .toast{bottom:calc(190px + env(safe-area-inset-bottom,0px))}
   </section>
 </div>
 <div class="toast" id="toast" hidden></div>
-<div class="run" id="run" hidden aria-live="polite">
-  <div class="run-in">
-    <div class="run-stats">
-      <div><div class="k">시간</div><div class="v" id="runTime">0:00</div></div>
-      <div><div class="k">거리</div><div class="v" id="runKm">0.00 km</div></div>
-      <div><div class="k">평균 페이스 /km</div><div class="v" id="runPace">-</div></div>
-      <div><div class="k">칼로리</div><div class="v kcal" id="runKcal">0 kcal</div></div>
+<div class="startbar" id="startbar" hidden>
+  <div class="sb-info"><b id="sbMin"></b><span id="sbKm"></span></div>
+  <button type="button" class="btn go" id="sbGo">시작</button>
+</div>
+<div class="runscr" id="run" hidden role="dialog" aria-modal="true" aria-label="운동 기록">
+  <header class="rs-head">
+    <div class="rs-title"><span class="rs-name" id="runName"></span><span class="rs-gps" id="runGps"></span></div>
+    <div class="rs-tools">
+      <button type="button" class="rs-chip" id="runFollow" hidden>내 위치</button>
+      <button type="button" class="rs-chip" id="runVoice" aria-pressed="true">음성 안내</button>
+      <button type="button" class="rs-chip" id="runView">지도 보기</button>
     </div>
-    <p class="run-state" id="runState"></p>
-    <div class="actions">
-      <button type="button" class="btn" id="runPause">일시정지</button>
-      <button type="button" class="btn" id="runFollow">내 위치로</button>
-      <button type="button" class="btn primary" id="runStop">종료·저장</button>
-      <button type="button" class="btn" id="runCancel">취소</button>
+  </header>
+  <div class="rs-body">
+    <div class="rs-big"><div class="v" id="runKm">0.00</div><div class="k">킬로미터</div></div>
+    <div class="rs-row">
+      <div><div class="v" id="runPace">-'--"</div><div class="k">평균 페이스</div></div>
+      <div><div class="v" id="runTime">0:00</div><div class="k">시간</div></div>
+      <div><div class="v" id="runKcal">0</div><div class="k">칼로리</div></div>
+    </div>
+    <div class="rs-map" id="runMap"></div>
+    <p class="rs-state" id="runState" aria-live="polite"></p>
+  </div>
+  <div class="rs-ctrl">
+    <button type="button" class="rs-btn go" id="runPause" aria-label="일시정지"><svg viewBox="0 0 24 24" aria-hidden="true"><rect x="6" y="4" width="4" height="16" rx="1"/><rect x="14" y="4" width="4" height="16" rx="1"/></svg></button>
+    <button type="button" class="rs-btn stop" id="runStop" aria-label="길게 눌러 종료"><svg viewBox="0 0 24 24" aria-hidden="true"><rect x="5" y="5" width="14" height="14" rx="2"/></svg><span class="lbl">길게 눌러 종료</span></button>
+    <button type="button" class="rs-btn go" id="runResume" aria-label="다시 시작"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M7 4.5v15a1 1 0 0 0 1.5.86l12-7.5a1 1 0 0 0 0-1.72l-12-7.5A1 1 0 0 0 7 4.5z"/></svg><span class="lbl">다시 시작</span></button>
+  </div>
+  <button type="button" class="rs-discard" id="runCancel">기록 버리기</button>
+  <div class="rs-count" id="runCount" hidden><span id="runCountN">3</span></div>
+  <div class="rs-sum" id="runSum" hidden>
+    <div class="rs-sum-in">
+      <div><p class="date" id="sumDate"></p><h2 id="sumName"></h2></div>
+      <div class="rs-big"><div class="v" id="sumKm">0.00</div><div class="k">킬로미터</div></div>
+      <div class="rs-row">
+        <div><div class="v" id="sumPace"></div><div class="k">평균 페이스</div></div>
+        <div><div class="v" id="sumTime"></div><div class="k">시간</div></div>
+        <div><div class="v" id="sumKcal"></div><div class="k">칼로리</div></div>
+      </div>
+      <h3>구간 기록</h3>
+      <div class="splits" id="sumSplits"></div>
+      <button type="button" class="rs-done" id="sumDone">완료</button>
     </div>
   </div>
 </div>
@@ -434,6 +556,7 @@ const fmtKm = x => `${x.toFixed(2)} km`;
 const fmtKcal = x => `${Math.round(x)} kcal`;
 const fmtMin = x => `${Math.round(x)}분`;
 const fmtPct = x => `${Math.round(x * 100)}%`;
+const fmtSecPace = sec => { const t = Math.round(sec), m = Math.floor(t / 60); return `${m}'${String(t % 60).padStart(2, "0")}"`; };   // 330 → 5'30"
 const fmtPace = kmh => { const p = 60 / kmh, m = Math.floor(p), s = Math.round((p - m) * 60); return `${m}:${String(s).padStart(2, "0")} /km`; };
 
 /* ================== 2. 송도 데이터 · 장소 ================== */
@@ -530,7 +653,7 @@ function initMap() {
     maxBounds: songdo.pad(0.25), maxBoundsViscosity: 0.8, attributionControl: true });
   map.attributionControl.setPrefix(false).addAttribution("© OpenStreetMap 기여자");
   map.fitBounds(songdo.pad(-0.15));
-  map.on("click", e => setPoint(pickMode, [e.latlng.lat, e.latlng.lng]));
+  map.on("click", e => { if (!Run.s) setPoint(pickMode, [e.latlng.lat, e.latlng.lng]); });
   // 배경: OSM 공용 타일. claude.ai 페이지처럼 외부 이미지가 막힌 곳에서는 실패하므로 벡터 지도로 대체
   tiles = L.tileLayer("https://tile.openstreetmap.org/{z}/{x}/{y}.png", { maxZoom: 19, crossOrigin: true });
   let errors = 0;
@@ -663,6 +786,7 @@ function buildForm() {
   $("customKmh").oninput = e => { const v = parseFloat(e.target.value); if (v >= 3 && v <= 25) { input.customKmh = v; update(true, true); } };
   $("weight").oninput = e => { const v = parseFloat(e.target.value); if (v >= 30 && v <= 150) { input.weight = v; update(false, true); Account.saveWeight(v); } };
   $("form").onsubmit = e => e.preventDefault();
+  $("condToggle").onclick = () => { const open = $("form").classList.toggle("open"); $("condToggle").setAttribute("aria-expanded", String(open)); };
 }
 
 function syncPick() {
@@ -689,6 +813,9 @@ function syncForm() {
   $("customKmh").disabled = !input.customOn;
   if (document.activeElement !== $("customKmh")) $("customKmh").value = input.customKmh;
   if (document.activeElement !== $("weight")) $("weight").value = input.weight;
+  $("condSum").innerHTML = [same ? "" : `→ <b>${esc(input.dest.name)}</b>`,
+    `<b>${input.customOn ? "직접" : PACES[input.pace].label} ${+k.toFixed(1)} km/h</b>`, DIFFS[input.difficulty].label, GOALS[input.goal],
+    input.scenery.map(v => SCENERY[v]).join("·") || "풍경 상관없음", `${input.weight} kg`].filter(Boolean).join(" · ");
   syncPick();
 }
 
@@ -773,7 +900,7 @@ function renderDetail(r) {
     <div class="detail-head">
       <div><h2>${esc(r.name)}</h2>
         <div class="sub">${esc(input.start.name)} → ${esc(same ? "같은 곳으로 복귀" : input.dest.name)} · ${KIND[c.kind] || ""} ${diffBadge(d)}</div></div>
-      <div class="actions"><button type="button" class="btn primary" id="startRun" ${c.infeasible || Run.s ? "disabled" : ""}>운동 시작 (GPS 기록)</button>
+      <div class="actions"><button type="button" class="btn go" id="startRun" ${c.infeasible || Run.s ? "disabled" : ""}>▶ 운동 시작</button>
         <button type="button" class="btn" id="done" ${c.infeasible ? "disabled" : ""}>완료 기록하기</button></div>
     </div>
     ${c.infeasible ? `<p class="alert" style="margin:12px 18px 0">도착지까지 가장 짧은 길도 ${fmtKm(r.km)}라서 ${r.min}분 안에 도착하기 어려워요. 이 속도로 약 ${fmtMin(r.estMin)} 걸립니다. 지도에는 최단 경로를 표시했어요.</p>` : ""}
@@ -812,6 +939,7 @@ function renderDetail(r) {
     </div>`;
   $("done").onclick = () => addRecord(r);
   $("startRun").onclick = () => Run.start(r);
+  syncStartbar();
   wireAi(r);
 }
 function ivlBar(p) { return p.segs.map(([t, m]) => `<span class="${t}" style="flex:${m}"></span>`).join(""); }
@@ -915,10 +1043,12 @@ function renderLog() {
   const keys = weekDays().map(dayKey);
   const wk = records.filter(r => keys.includes(r.date));
   const s = stats(records);
-  $("sum").innerHTML = `
-    <div><div class="k">이번 주 거리</div><div class="v">${fmtKm(wk.reduce((a, r) => a + r.km, 0))}</div></div>
-    <div><div class="k">이번 주 칼로리</div><div class="v">${fmtKcal(wk.reduce((a, r) => a + r.kcal, 0))}</div></div>
-    <div><div class="k">연속 운동</div><div class="v">${s.streak}일</div></div>`;
+  const wkKm = wk.reduce((a, r) => a + r.km, 0), wkMin = wk.reduce((a, r) => a + r.min, 0);
+  $("sum").innerHTML = `<div class="wk-big"><div class="v">${wkKm.toFixed(2)}</div><div class="k">이번 주 킬로미터</div></div>
+    <div class="wk-row"><div><div class="v">${wk.length}</div><div class="k">운동</div></div>
+      <div><div class="v">${wkKm > 0.05 ? fmtSecPace(wkMin * 60 / wkKm) : `-'--"`}</div><div class="k">평균 페이스</div></div>
+      <div><div class="v">${Math.round(wk.reduce((a, r) => a + r.kcal, 0))}</div><div class="k">칼로리</div></div>
+      <div><div class="v">${s.streak}일</div><div class="k">연속</div></div></div>`;
   const per = keys.map(k => wk.filter(r => r.date === k).reduce((a, r) => a + r.km, 0));
   const max = Math.max(5, Math.ceil(Math.max(...per)));
   const W = 560, H = 200, Lp = 34, B = 26, T = 12, bw = (W - Lp - 10) / 7;
@@ -979,32 +1109,74 @@ function distToPath(p, path) {   // 점에서 코스 선까지 최단 거리(m),
   }
   return best;
 }
+const fmtPaceQ = kmh => kmh > 0.5 ? fmtSecPace(3600 / kmh) : `-'--"`;
+// 모바일 하단 시작 바: 코스 추천 화면에서 고른 코스를 바로 시작
+function syncStartbar() {
+  const r = results[selected];
+  const show = !Run.s && !$("view-plan").hidden && !!r && !r.c.error && !r.c.infeasible;
+  $("startbar").hidden = !show;
+  document.body.classList.toggle("has-startbar", show);
+  if (show) { $("sbMin").textContent = `${r.min}분 코스`; $("sbKm").textContent = `${fmtKm(r.km)} · ${r.name}`; }
+}
 const Run = {
   s: null, watch: null, tick: null, wake: null, layer: null, line: null, me: null, ring: null,
   follow: true, here: null, off: 0, rejects: 0, armed: null, heading: null, hAnchor: null, shownH: 0,
+  voice: store.get("voice", true), view: "stats", mapHome: null, holdT: null,
   start(r) {
     if (this.s) return;
     if (!navigator.geolocation) { toast("이 브라우저에서는 위치를 쓸 수 없어요"); return; }
-    this.s = { name: r.name, path: r.path || [], difficulty: input.difficulty, startedAt: Date.now(),
-      started: false, paused: false, runStart: null, elapsed: 0, m: 0, last: null, trail: [[]], acc: null };
+    this.s = { name: r.name, path: r.path || [], difficulty: input.difficulty, startedAt: Date.now(), hold: true,
+      started: false, paused: false, runStart: null, elapsed: 0, m: 0, last: null, trail: [[]], acc: null, splits: [] };
     this.save();
+    this.say("셋");   // 버튼을 누른 순간에 한 번 말해야 iOS에서 이후 음성 안내가 나옴
     this.begin();
+    this.countdown();
   },
   begin() {   // 새로 시작할 때와 새로고침 뒤 이어서 기록할 때 모두
-    document.body.classList.add("running"); $("run").hidden = false;
+    document.body.classList.add("running"); $("run").hidden = false; $("lgRun").hidden = false; $("runSum").hidden = true;
+    $("runName").textContent = this.s.name;
+    $("runVoice").setAttribute("aria-pressed", String(this.voice));
+    // 지도를 러닝 화면 안으로 옮겨 '지도 보기'에서 씀 (끝나면 제자리로)
+    const el = $("map");
+    if (!this.mapHome) this.mapHome = { parent: el.parentNode, next: el.nextSibling };
+    $("runMap").appendChild(el);
     if (!this.layer) {
       this.layer = L.layerGroup().addTo(map);
       map.on("dragstart", () => { this.follow = false; });
     }
     this.layer.clearLayers();
     if (this.s.path.length > 1) L.polyline(this.s.path, { color: css("--route"), weight: 3, opacity: 0.6, dashArray: "6 6", interactive: false }).addTo(this.layer);
-    this.line = L.polyline([], { color: css("--dest"), weight: 5, opacity: 0.95, lineJoin: "round", interactive: false }).addTo(this.layer);
+    this.edge = L.polyline([], { color: "#0A0A0A", weight: 10, opacity: 0.85, lineJoin: "round", interactive: false }).addTo(this.layer);   // 밝은 지도에서도 보이게 테두리
+    this.line = L.polyline([], { color: css("--volt"), weight: 6, opacity: 1, lineJoin: "round", interactive: false }).addTo(this.layer);
     this.me = this.ring = null; this.here = null; this.follow = true; this.rejects = 0; this.heading = null; this.hAnchor = null; this.shownH = 0;
+    this.setView(store.get("runView", "stats"));
     this.watch = navigator.geolocation.watchPosition(p => this.fix(p), e => this.fail(e), { enableHighAccuracy: true, maximumAge: 0, timeout: 20000 });
     this.tick = setInterval(() => this.render(), 1000);
     this.lock(); this.draw(); this.render();
     if (results[selected]) renderDetail(results[selected]);
-    if (!$("view-plan").hidden) $("map").scrollIntoView({ behavior: "smooth", block: "center" });
+    syncStartbar();
+  },
+  countdown() {   // 3 · 2 · 1 뒤에 기록 시작. 그동안에도 GPS는 미리 잡는다
+    const box = $("runCount"), words = ["셋", "둘", "하나"];
+    let n = 3;
+    box.hidden = false; $("runCountN").textContent = n;
+    const step = () => {
+      if (!this.s) { box.hidden = true; return; }
+      if (--n > 0) { $("runCountN").textContent = n; this.say(words[3 - n]); setTimeout(step, 900); return; }
+      box.hidden = true; this.s.hold = false; this.save(); this.say("운동을 시작합니다"); this.render();
+    };
+    setTimeout(step, 900);
+  },
+  setView(v) {
+    this.view = v; store.set("runView", v);
+    $("run").classList.toggle("mapview", v === "map");
+    $("runView").textContent = v === "map" ? "기록 보기" : "지도 보기";
+    $("runFollow").hidden = v !== "map";
+    if (v === "map") setTimeout(() => { map.invalidateSize(); if (this.here) map.setView(this.here, Math.max(map.getZoom(), 16)); }, 30);
+  },
+  say(text) {
+    if (!this.voice || !window.speechSynthesis) return;
+    try { const u = new SpeechSynthesisUtterance(text); u.lang = "ko-KR"; speechSynthesis.cancel(); speechSynthesis.speak(u); } catch {}
   },
   async lock() {   // 운동 중 화면 꺼짐 방지 (화면이 꺼지면 브라우저가 GPS를 멈춤)
     try { if (navigator.wakeLock && !this.wake) { this.wake = await navigator.wakeLock.request("screen"); this.wake.addEventListener("release", () => { this.wake = null; }); } } catch {}
@@ -1017,9 +1189,9 @@ const Run = {
     this.off = s.path.length > 1 ? distToPath(at, s.path) : 0;
     this.turn(at, c);
     this.drawMe(at, c.accuracy);
-    if (c.accuracy > GPS.ACC || s.paused) return this.render();
+    if (s.hold || c.accuracy > GPS.ACC || s.paused) return this.render();
     const seg = s.trail[s.trail.length - 1];
-    if (!s.started) {   // 첫 정확한 위치에서 시계 시작
+    if (!s.started) {   // 카운트다운 뒤 첫 정확한 위치에서 시계 시작
       s.started = true; s.runStart = Date.now();
     }
     if (!s.last) { s.last = { at, t }; seg.push(at); return this.commit(); }
@@ -1031,7 +1203,12 @@ const Run = {
     }
     this.rejects = 0;
     s.m += d; s.last = { at, t }; seg.push(at);
+    while (s.m >= (s.splits.length + 1) * 1000) { s.splits.push(this.elapsedMs()); this.announce(); }
     this.commit();
+  },
+  announce() {   // 1 km마다 음성으로 거리와 평균 페이스
+    const n = this.s.splits.length, sec = Math.round(this.s.splits[n - 1] / 1000 / n);
+    this.say(`${n}킬로미터. 평균 페이스 ${Math.floor(sec / 60)}분 ${sec % 60}초.`);
   },
   commit() { this.save(); this.draw(); this.render(); },
   fail(e) {
@@ -1070,9 +1247,9 @@ const Run = {
       if (arrow && this.heading != null) arrow.style.setProperty("--h", this.rot());   // 회전만 바꿔 부드럽게
       else if (el && this.heading != null) el.innerHTML = this.meHtml();
     }
-    if (this.follow && !$("view-plan").hidden) map.panTo(at, { animate: true });
+    if (this.follow && this.view === "map") map.panTo(at, { animate: true });
   },
-  draw() { if (this.line) this.line.setLatLngs(this.s.trail.filter(x => x.length > 1)); },
+  draw() { if (!this.line) return; const t = this.s.trail.filter(x => x.length > 1); this.edge.setLatLngs(t); this.line.setLatLngs(t); },
   stats() {
     const ms = this.elapsedMs(), min = ms / 60000, km = this.s.m / 1000, kmh = min > 0 ? km / (min / 60) : 0;
     // 칼로리는 실제 속도로 MET를 다시 잡는다 (거의 안 움직였으면 고른 페이스 기준)
@@ -1083,59 +1260,115 @@ const Run = {
   render() {
     const s = this.s; if (!s) return;
     const x = this.stats();
+    $("runKm").textContent = x.km.toFixed(2);
     $("runTime").textContent = fmtClock(x.ms);
-    $("runKm").textContent = fmtKm(x.km);
-    $("runPace").textContent = x.km >= 0.05 ? fmtPace(x.kmh).replace(" /km", "") : "-";
-    $("runKcal").textContent = fmtKcal(x.kcal);
-    $("runPause").textContent = s.paused ? "다시 시작" : "일시정지";
-    const acc = s.acc ? ` · 정확도 ±${Math.round(s.acc)} m` : "";
-    const [msg, cls] = !s.started ? [`GPS 잡는 중${acc}. 위치가 정확해지면 시계가 시작돼요`, ""]
-      : s.paused ? ["일시정지 중이에요. 이 동안 움직인 거리는 더하지 않아요", ""]
-      : s.acc > GPS.ACC ? [`GPS 신호가 약해 거리 계산을 잠시 멈췄어요${acc}`, "warn"]
-      : this.off > GPS.OFF ? [`코스에서 ${Math.round(this.off)} m 벗어났어요. 거리는 실제 이동으로 계산해요`, "warn"]
-      : [`${s.name} 기록 중${acc}`, "ok"];
-    $("runState").textContent = msg; $("runState").className = `run-state ${cls}`;
+    $("runPace").textContent = x.km >= 0.05 ? fmtPaceQ(x.kmh) : `-'--"`;
+    $("runKcal").textContent = Math.round(x.kcal);
+    $("run").classList.toggle("paused", s.paused);
+    $("runGps").textContent = s.acc ? `GPS ±${Math.round(s.acc)} m` : "GPS 찾는 중";
+    $("runGps").className = `rs-gps ${!s.acc ? "" : s.acc > GPS.ACC ? "bad" : "good"}`;
+    const [msg, cls] = s.hold ? ["준비하세요", ""]
+      : !s.started ? ["GPS 위치가 정확해지면 시계가 시작돼요", ""]
+      : s.paused ? ["일시정지 · 이 동안 움직인 거리는 더하지 않아요", ""]
+      : s.acc > GPS.ACC ? ["GPS 신호가 약해 거리 계산을 잠시 멈췄어요", "warn"]
+      : this.off > GPS.OFF ? [`코스에서 ${Math.round(this.off)} m 벗어났어요 · 거리는 실제 이동 기준`, "warn"]
+      : ["", ""];
+    $("runState").textContent = msg; $("runState").className = `rs-state ${cls}`;
   },
   togglePause() {
     const s = this.s;
-    if (s.paused) { s.paused = false; if (s.started) s.runStart = Date.now(); }
-    else { s.elapsed = this.elapsedMs(); s.runStart = null; s.paused = true; s.last = null; s.trail.push([]); }
+    if (s.paused) { s.paused = false; if (s.started) s.runStart = Date.now(); this.say("다시 시작합니다"); }
+    else { s.elapsed = this.elapsedMs(); s.runStart = null; s.paused = true; s.last = null; s.trail.push([]); this.say("일시정지했습니다"); }
     this.save(); this.render();
+    (s.paused ? $("runResume") : $("runPause")).focus();
   },
+  // 종료는 길게 눌러야 함 (1.2초 동안 버튼 둘레가 차오름)
+  holdStart() {
+    if (this.holdT) return;
+    const b = $("runStop"), t0 = performance.now(), D = 1200;
+    const f = now => {
+      const p = Math.min(1, (now - t0) / D);
+      b.style.setProperty("--p", p);
+      if (p < 1) { this.holdT = requestAnimationFrame(f); return; }
+      this.holdT = null; b.style.setProperty("--p", 0); this.finish();
+    };
+    this.holdT = requestAnimationFrame(f);
+  },
+  holdStop() { if (this.holdT) cancelAnimationFrame(this.holdT); this.holdT = null; $("runStop").style.setProperty("--p", 0); },
   arm(btn, label, fn) {   // 실수로 누르는 것 방지: 3초 안에 한 번 더 눌러야 실행
+    const t = btn.querySelector(".lbl") || btn;
     if (this.armed === btn) { this.armed = null; return fn(); }
-    const old = btn.textContent; this.armed = btn; btn.textContent = label;
-    setTimeout(() => { if (this.armed === btn) this.armed = null; btn.textContent = old; }, 3000);
+    const old = t.textContent; this.armed = btn; t.textContent = label;
+    setTimeout(() => { if (this.armed === btn) this.armed = null; t.textContent = old; }, 3000);
   },
   async finish() {
+    const s = this.s; if (!s) return;
     const x = this.stats();
     if (x.min < 1) { toast("1분 미만이라 저장하지 않았어요"); return this.end(); }
-    const ok = await saveRecord({ courseName: this.s.name, min: Math.round(x.min), km: +x.km.toFixed(2), kcal: Math.round(x.kcal),
-      difficulty: this.s.difficulty, pace: x.kmh < 6.5 ? "walk" : x.kmh < 9 ? "jog" : "run" });
-    if (ok) this.end();
+    const ok = await saveRecord({ courseName: s.name, min: Math.round(x.min), km: +x.km.toFixed(2), kcal: Math.round(x.kcal),
+      difficulty: s.difficulty, pace: x.kmh < 6.5 ? "walk" : x.kmh < 9 ? "jog" : "run" });
+    if (!ok) return;
+    const sum = { name: s.name, x, splits: s.splits.slice(), m: s.m };
+    this.stop();
+    this.summary(sum);
   },
-  end() {
+  summary({ name, x, splits, m }) {   // 끝난 뒤 요약: 큰 거리 + km 구간 기록
+    const d = new Date();
+    $("sumDate").textContent = `${d.getMonth() + 1}월 ${d.getDate()}일 ${"일월화수목금토"[d.getDay()]}요일`;
+    $("sumName").textContent = name;
+    $("sumKm").textContent = x.km.toFixed(2);
+    $("sumPace").textContent = fmtPaceQ(x.kmh);
+    $("sumTime").textContent = fmtClock(x.ms);
+    $("sumKcal").textContent = Math.round(x.kcal);
+    const rows = splits.map((t, i) => ({ n: `${i + 1} km`, sec: (t - (splits[i - 1] || 0)) / 1000 }));
+    const rest = m - splits.length * 1000;
+    if (rest >= 50) rows.push({ n: `${(m / 1000).toFixed(2)}`, sec: (x.ms - (splits[splits.length - 1] || 0)) / 1000 / (rest / 1000) });
+    const best = Math.min(...rows.map(r => r.sec));
+    $("sumSplits").innerHTML = rows.length > 1 || splits.length ? rows.map(r =>
+      `<div class="sp"><span class="n">${r.n}</span><span class="bar"><i style="width:${Math.max(8, best / r.sec * 100).toFixed(0)}%"></i></span><span class="p">${fmtSecPace(r.sec)}</span></div>`).join("")
+      : `<p class="none">1 km 이상 달리면 km마다 구간 기록이 보여요.</p>`;
+    $("runSum").hidden = false;
+    $("sumDone").focus();
+    this.say(`운동을 마쳤습니다. ${x.km.toFixed(2)}킬로미터.`);
+  },
+  stop() {   // GPS·타이머 정리 (화면은 그대로)
     if (this.watch != null) navigator.geolocation.clearWatch(this.watch);
     clearInterval(this.tick);
     try { this.wake?.release(); } catch {}
+    this.holdStop();
     this.watch = null; this.wake = null; this.s = null; this.armed = null;
-    this.layer?.clearLayers();
     store.set("run", null);
-    document.body.classList.remove("running"); $("run").hidden = true;
-    $("runStop").textContent = "종료·저장"; $("runCancel").textContent = "취소";
-    if (results[selected]) renderDetail(results[selected]);
   },
+  close() {   // 러닝 화면 닫고 지도를 원래 자리로
+    this.layer?.clearLayers();
+    if (this.mapHome) { this.mapHome.parent.insertBefore($("map"), this.mapHome.next); this.mapHome = null; }
+    document.body.classList.remove("running"); $("run").hidden = true; $("runSum").hidden = true; $("runCount").hidden = true; $("lgRun").hidden = true;
+    $("run").classList.remove("paused", "mapview");
+    setTimeout(() => { map.invalidateSize(); drawRoute(true); }, 30);
+    if (results[selected]) renderDetail(results[selected]);
+    syncStartbar();
+  },
+  end() { this.stop(); this.close(); },
   save() { store.set("run", this.s); },
   wire() {
     $("runPause").onclick = () => this.togglePause();
+    $("runResume").onclick = () => this.togglePause();
+    $("runView").onclick = () => this.setView(this.view === "map" ? "stats" : "map");
+    $("runVoice").onclick = () => { this.voice = !this.voice; store.set("voice", this.voice); $("runVoice").setAttribute("aria-pressed", String(this.voice)); if (!this.voice) try { speechSynthesis.cancel(); } catch {} };
     $("runFollow").onclick = () => { this.follow = true; if (this.here) map.setView(this.here, Math.max(map.getZoom(), 16)); };
-    $("runStop").onclick = e => this.arm(e.currentTarget, "다시 눌러 저장", () => this.finish());
-    $("runCancel").onclick = e => this.arm(e.currentTarget, "다시 눌러 버림", () => { this.end(); toast("기록을 버렸어요"); });
+    const stop = $("runStop");
+    stop.addEventListener("pointerdown", e => { e.preventDefault(); this.holdStart(); });
+    for (const ev of ["pointerup", "pointerleave", "pointercancel"]) stop.addEventListener(ev, () => this.holdStop());
+    stop.addEventListener("contextmenu", e => e.preventDefault());
+    stop.addEventListener("click", e => { if (e.detail === 0) this.arm(stop, "다시 눌러 종료", () => this.finish()); });   // 키보드: 두 번 눌러 종료
+    $("runCancel").onclick = e => this.arm(e.currentTarget, "다시 눌러 버리기", () => { this.end(); toast("기록을 버렸어요"); });
+    $("sumDone").onclick = () => this.close();
+    $("sbGo").onclick = () => results[selected] && Run.start(results[selected]);
     document.addEventListener("visibilitychange", () => { if (this.s && document.visibilityState === "visible") { this.lock(); this.render(); } });
     // 새로고침·탭 종료 뒤 돌아오면 이어서 기록 (꺼져 있던 동안은 직선 거리로 이어짐)
     const saved = store.get("run", null);
     if (saved && saved.startedAt && Date.now() - saved.startedAt < GPS.KEEP_H * 3600e3 && Array.isArray(saved.trail)) {
-      this.s = saved; this.begin(); toast("진행 중이던 운동을 이어서 기록해요");
+      this.s = { splits: [], ...saved, hold: false }; this.begin(); toast("진행 중이던 운동을 이어서 기록해요");
     } else store.set("run", null);
   },
 };
@@ -1238,6 +1471,7 @@ document.querySelector(".tabs").onclick = e => {
   $("view-plan").hidden = b.dataset.tab !== "plan";
   $("view-log").hidden = b.dataset.tab !== "log";
   if (b.dataset.tab === "log") renderLog(); else map.invalidateSize();
+  syncStartbar();
 };
 $("target").innerHTML = `<span class="status" id="status"></span>`;
 buildForm();
