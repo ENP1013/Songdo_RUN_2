@@ -217,10 +217,15 @@ dialog#authDlg::backdrop{background:rgba(0,0,0,.35)}
 .run-state{font-size:13px;color:var(--muted);margin:0}
 .run-state.ok{color:var(--accent)}
 .run-state.warn{color:var(--warn)}
-.run .actions .btn{flex:1}
+.run .actions{flex-wrap:nowrap;gap:6px}
+.run .actions .btn{flex:1;padding:9px 4px;white-space:nowrap;min-width:0}
 body.running{padding-bottom:210px}
 body.running .toast{bottom:calc(190px + env(safe-area-inset-bottom,0px))}
 .me-dot{width:16px;height:16px;border-radius:50%;background:var(--dest);border:3px solid #fff;box-shadow:0 0 0 1px rgba(0,0,0,.25),0 1px 4px rgba(0,0,0,.35);position:absolute;left:-8px;top:-8px}
+.me-arrow{position:absolute;left:-15px;top:-15px;width:30px;height:30px;transform:rotate(var(--h,0deg));filter:drop-shadow(0 1px 2px rgba(0,0,0,.45))}
+.me-arrow svg{display:block;width:100%;height:100%}
+.me-arrow path{fill:var(--dest);stroke:#fff;stroke-width:2;stroke-linejoin:round}
+@media (prefers-reduced-motion:no-preference){.me-arrow{transition:transform .4s ease-out}}
 @media (prefers-reduced-motion:no-preference){.card,.btn,.chip,.seg button{transition:background .15s,border-color .15s,color .15s}}
 </style>
 
@@ -338,7 +343,7 @@ body.running .toast{bottom:calc(190px + env(safe-area-inset-bottom,0px))}
     <div class="run-stats">
       <div><div class="k">시간</div><div class="v" id="runTime">0:00</div></div>
       <div><div class="k">거리</div><div class="v" id="runKm">0.00 km</div></div>
-      <div><div class="k">평균 페이스</div><div class="v" id="runPace">-</div></div>
+      <div><div class="k">평균 페이스 /km</div><div class="v" id="runPace">-</div></div>
       <div><div class="k">칼로리</div><div class="v kcal" id="runKcal">0 kcal</div></div>
     </div>
     <p class="run-state" id="runState"></p>
@@ -1341,7 +1346,7 @@ function distToPath(p, path) {   // 점에서 코스 선까지 최단 거리(m),
 }
 const Run = {
   s: null, watch: null, tick: null, wake: null, layer: null, line: null, me: null, ring: null,
-  follow: true, here: null, off: 0, rejects: 0, armed: null,
+  follow: true, here: null, off: 0, rejects: 0, armed: null, heading: null, hAnchor: null, shownH: 0,
   start(r) {
     if (this.s) return;
     if (!navigator.geolocation) { toast("이 브라우저에서는 위치를 쓸 수 없어요"); return; }
@@ -1359,7 +1364,7 @@ const Run = {
     this.layer.clearLayers();
     if (this.s.path.length > 1) L.polyline(this.s.path, { color: css("--route"), weight: 3, opacity: 0.6, dashArray: "6 6", interactive: false }).addTo(this.layer);
     this.line = L.polyline([], { color: css("--dest"), weight: 5, opacity: 0.95, lineJoin: "round", interactive: false }).addTo(this.layer);
-    this.me = this.ring = null; this.here = null; this.follow = true; this.rejects = 0;
+    this.me = this.ring = null; this.here = null; this.follow = true; this.rejects = 0; this.heading = null; this.hAnchor = null; this.shownH = 0;
     this.watch = navigator.geolocation.watchPosition(p => this.fix(p), e => this.fail(e), { enableHighAccuracy: true, maximumAge: 0, timeout: 20000 });
     this.tick = setInterval(() => this.render(), 1000);
     this.lock(); this.draw(); this.render();
@@ -1375,6 +1380,7 @@ const Run = {
     const c = p.coords, at = [c.latitude, c.longitude], t = p.timestamp || Date.now();
     s.acc = c.accuracy; this.here = at;
     this.off = s.path.length > 1 ? distToPath(at, s.path) : 0;
+    this.turn(at, c);
     this.drawMe(at, c.accuracy);
     if (c.accuracy > GPS.ACC || s.paused) return this.render();
     const seg = s.trail[s.trail.length - 1];
@@ -1401,11 +1407,34 @@ const Run = {
     }
     $("runState").textContent = "GPS 신호를 찾는 중이에요. 하늘이 트인 곳으로 이동해 보세요";
   },
+  // 진행 방향(북쪽 0°, 시계 방향): GPS가 주는 heading을 쓰고, 없으면 8 m 이상 움직인 두 점으로 계산
+  turn(at, c) {
+    if (c.accuracy > GPS.ACC) return;
+    if (Number.isFinite(c.heading) && c.speed > 0.5) { this.heading = c.heading; this.hAnchor = at; return; }
+    if (!this.hAnchor) { this.hAnchor = at; return; }
+    if (Engine.distM(this.hAnchor, at) < 8) return;
+    const k = Math.cos(at[0] * Math.PI / 180);
+    this.heading = (Math.atan2((at[1] - this.hAnchor[1]) * k, at[0] - this.hAnchor[0]) * 180 / Math.PI + 360) % 360;
+    this.hAnchor = at;
+  },
+  rot() {   // 350° → 10°일 때 짧은 쪽(+20°)으로 돌도록 누적 각도로 바꿈
+    this.shownH += ((this.heading - this.shownH) % 360 + 540) % 360 - 180;
+    return `${this.shownH.toFixed(0)}deg`;
+  },
+  meHtml() {   // 방향을 알기 전에는 동그라미, 알면 화살표
+    return this.heading == null ? `<div class="me-dot"></div>`
+      : `<div class="me-arrow" style="--h:${this.rot()}"><svg viewBox="0 0 30 30" aria-hidden="true"><path d="M15 2 L26 27 L15 21 L4 27 Z"/></svg></div>`;
+  },
   drawMe(at, acc) {
     if (!this.me) {
       this.ring = L.circle(at, { radius: acc, color: css("--dest"), weight: 1, fillOpacity: 0.12, interactive: false }).addTo(this.layer);
-      this.me = L.marker(at, { interactive: false, keyboard: false, zIndexOffset: 1000, icon: L.divIcon({ className: "", iconSize: [0, 0], html: `<div class="me-dot"></div>` }) }).addTo(this.layer);
-    } else { this.me.setLatLng(at); this.ring.setLatLng(at).setRadius(acc); }
+      this.me = L.marker(at, { interactive: false, keyboard: false, zIndexOffset: 1000, icon: L.divIcon({ className: "", iconSize: [0, 0], html: this.meHtml() }) }).addTo(this.layer);
+    } else {
+      this.me.setLatLng(at); this.ring.setLatLng(at).setRadius(acc);
+      const el = this.me.getElement(), arrow = el?.querySelector(".me-arrow");
+      if (arrow && this.heading != null) arrow.style.setProperty("--h", this.rot());   // 회전만 바꿔 부드럽게
+      else if (el && this.heading != null) el.innerHTML = this.meHtml();
+    }
     if (this.follow && !$("view-plan").hidden) map.panTo(at, { animate: true });
   },
   draw() { if (this.line) this.line.setLatLngs(this.s.trail.filter(x => x.length > 1)); },
@@ -1421,7 +1450,7 @@ const Run = {
     const x = this.stats();
     $("runTime").textContent = fmtClock(x.ms);
     $("runKm").textContent = fmtKm(x.km);
-    $("runPace").textContent = x.km >= 0.05 ? fmtPace(x.kmh) : "-";
+    $("runPace").textContent = x.km >= 0.05 ? fmtPace(x.kmh).replace(" /km", "") : "-";
     $("runKcal").textContent = fmtKcal(x.kcal);
     $("runPause").textContent = s.paused ? "다시 시작" : "일시정지";
     const acc = s.acc ? ` · 정확도 ±${Math.round(s.acc)} m` : "";
