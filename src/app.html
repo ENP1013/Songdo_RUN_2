@@ -192,6 +192,15 @@ table.log td.n{font-family:var(--f-num);text-align:right;white-space:nowrap}
 .bdg .s{font-size:12px;color:var(--muted)}
 .empty{color:var(--muted);font-size:14px;padding:18px;text-align:center;background:var(--sunk);border-radius:8px}
 
+.topbar{display:flex;gap:8px;align-items:center;flex-wrap:wrap}
+.acct{border:1px solid var(--line);background:var(--surface);border-radius:999px;padding:7px 14px;font-weight:600;cursor:pointer;max-width:200px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.acct.on{border-color:var(--accent);color:var(--accent)}
+dialog#authDlg{border:1px solid var(--line);border-radius:var(--r);background:var(--surface);color:var(--ink);padding:0;width:min(380px,calc(100vw - 32px))}
+dialog#authDlg::backdrop{background:rgba(0,0,0,.35)}
+#authForm{padding:18px;display:flex;flex-direction:column;gap:14px}
+#authOut,#authIn{display:flex;flex-direction:column;gap:14px}
+.dlg-head{display:flex;justify-content:space-between;align-items:center}
+.dlg-head h2{font-size:19px}
 .toast{position:fixed;left:50%;bottom:calc(20px + env(safe-area-inset-bottom,0px));transform:translateX(-50%);background:var(--ink);color:var(--bg);padding:10px 16px;border-radius:999px;font-size:14px;font-weight:600;z-index:1000;max-width:calc(100% - 32px)}
 .note{font-size:12px;color:var(--muted);border-top:1px solid var(--line);padding-top:12px;margin:0}
 @media (prefers-reduced-motion:no-preference){.card,.btn,.chip,.seg button{transition:background .15s,border-color .15s,color .15s}}
@@ -203,10 +212,13 @@ table.log td.n{font-family:var(--f-num);text-align:right;white-space:nowrap}
       <h1>Run <span>&amp;</span> Walk 코스 메이커</h1>
       <p>송도 지도에서 출발지를 찍고 페이스와 취향을 고르면, 실제 보행로를 따라 20 · 40 · 60분 코스를 빨간 경로로 그려 드려요.</p>
     </div>
-    <nav class="tabs" role="tablist">
-      <button role="tab" id="tab-plan" aria-selected="true" data-tab="plan">코스 추천</button>
-      <button role="tab" id="tab-log" aria-selected="false" data-tab="log">기록 · 배지</button>
-    </nav>
+    <div class="topbar">
+      <nav class="tabs" role="tablist">
+        <button role="tab" id="tab-plan" aria-selected="true" data-tab="plan">코스 추천</button>
+        <button role="tab" id="tab-log" aria-selected="false" data-tab="log">기록 · 배지</button>
+      </nav>
+      <button type="button" class="acct" id="acctBtn" hidden>로그인</button>
+    </div>
   </header>
 
   <!-- 코스 추천 -->
@@ -284,6 +296,7 @@ table.log td.n{font-family:var(--f-num);text-align:right;white-space:nowrap}
     <div class="rec-grid">
       <div class="panel">
         <h2 style="font-size:18px">이번 주 기록</h2>
+        <p class="hint" id="syncHint"></p>
         <div class="sum" id="sum"></div>
         <div class="chart" id="chart"></div>
         <div class="tablewrap" id="logtable"></div>
@@ -299,6 +312,34 @@ table.log td.n{font-family:var(--f-num);text-align:right;white-space:nowrap}
   </section>
 </div>
 <div class="toast" id="toast" hidden></div>
+<dialog id="authDlg" aria-labelledby="authTitle">
+  <form id="authForm" method="dialog" novalidate>
+    <div class="dlg-head"><h2 id="authTitle">로그인</h2><button type="button" class="x" id="authClose" aria-label="닫기">×</button></div>
+    <div id="authOut">
+      <div class="seg" id="authMode" role="group" aria-label="로그인 또는 가입">
+        <button type="button" data-v="login" aria-pressed="true">로그인</button>
+        <button type="button" data-v="signup" aria-pressed="false">가입</button>
+      </div>
+      <div class="field"><label class="label" for="authNick">닉네임</label>
+        <input type="text" id="authNick" autocomplete="username" maxlength="12" placeholder="한글·영문·숫자 2~12자"></div>
+      <div class="field"><label class="label" for="authPw">비밀번호</label>
+        <input type="password" id="authPw" autocomplete="current-password" placeholder="4자 이상"></div>
+      <div class="field" id="authWeightRow" hidden><label class="label" for="authWeight">체중 (kg, 선택)</label>
+        <input type="number" id="authWeight" min="30" max="150" step="1" placeholder="칼로리 계산에 사용"></div>
+      <p class="hint" id="authNote">로그인하면 기록이 계정에 저장돼 어느 기기에서든 볼 수 있어요.</p>
+      <p class="alert" id="authErr" hidden></p>
+      <button type="submit" class="btn primary" id="authSubmit">로그인</button>
+    </div>
+    <div id="authIn" hidden>
+      <p style="margin:0"><b id="authWho"></b> 님으로 로그인했어요.</p>
+      <div class="alert" id="migrate" hidden>
+        이 기기에 저장된 기록 <b id="migrateN"></b>개가 있어요. 계정으로 옮길까요?
+        <div class="actions" style="margin-top:8px"><button type="button" class="btn primary" id="migrateYes">계정으로 옮기기</button><button type="button" class="btn" id="migrateNo">이 기기에만 두기</button></div>
+      </div>
+      <button type="button" class="btn" id="logoutBtn">로그아웃</button>
+    </div>
+  </form>
+</dialog>
 
 <script type="application/json" id="songdo-data">__SONGDO_DATA__</script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.js"></script>
@@ -546,7 +587,7 @@ function buildForm() {
     input.scenery = input.scenery.includes(v) ? input.scenery.filter(x => x !== v) : [...input.scenery, v]; update(true); };
   $("customOn").onchange = e => { input.customOn = e.target.checked; update(true); };
   $("customPace").oninput = e => { const v = parseFloat(e.target.value); if (v >= 3 && v <= 20) { input.customPace = v; update(true, true); } };
-  $("weight").oninput = e => { const v = parseFloat(e.target.value); if (v >= 30 && v <= 150) { input.weight = v; update(false, true); } };
+  $("weight").oninput = e => { const v = parseFloat(e.target.value); if (v >= 30 && v <= 150) { input.weight = v; update(false, true); Account.saveWeight(v); } };
   $("form").onsubmit = e => e.preventDefault();
 }
 
@@ -749,16 +790,30 @@ function stats(recs) {
 }
 function earned(recs) { const s = stats(recs); return BADGES.filter(b => b.test(s)).map(b => b.id); }
 
-function addRecord(r) {
+async function addRecord(r) {
   const before = new Set(earned(records));
-  records = [...records, { id: Date.now(), date: dayKey(new Date()), courseName: r.name,
-    min: r.min, km: +r.km.toFixed(2), kcal: Math.round(r.kcal), difficulty: input.difficulty, pace: input.pace }];
-  store.set("records", records);
+  const rec = { id: String(Date.now()), date: dayKey(new Date()), courseName: r.name,
+    min: r.min, km: +r.km.toFixed(2), kcal: Math.round(r.kcal), difficulty: input.difficulty, pace: input.pace };
+  if (Account.user) {
+    try { const j = await Account.api("POST", "/api/workouts", rec); records = [...records, ...j.workouts]; }
+    catch (e) { toast(e.message || "기록을 저장하지 못했어요"); return; }
+  } else {
+    records = [...records, rec];
+    store.set("records", records);
+  }
   const fresh = BADGES.filter(b => earned(records).includes(b.id) && !before.has(b.id));
   toast(fresh.length ? `새 배지: ${fresh.map(b => b.t).join(", ")}` : `${r.name} ${fmtKm(r.km)} 기록했어요`);
   renderLog();
 }
-function removeRecord(id) { records = records.filter(r => r.id !== id); store.set("records", records); renderLog(); }
+async function removeRecord(id) {
+  if (Account.user) {
+    try { await Account.api("DELETE", `/api/workouts?id=${encodeURIComponent(id)}`, {}); }
+    catch (e) { toast(e.message || "기록을 지우지 못했어요"); return; }
+  }
+  records = records.filter(r => String(r.id) !== id);
+  if (!Account.user) store.set("records", records);
+  renderLog();
+}
 
 function weekDays() {
   const now = new Date(), mon = new Date(now);
@@ -793,7 +848,7 @@ function renderLog() {
       <td class="n">${fmtMin(r.min)}</td><td class="n">${fmtKm(r.km)}</td><td class="n">${fmtKcal(r.kcal)}</td>
       <td><button class="x" data-id="${r.id}" aria-label="기록 삭제">×</button></td></tr>`).join("")}</tbody></table>`
     : `<div class="empty">아직 기록이 없어요. 코스 추천 탭에서 코스를 고르고 <b>완료 기록하기</b>를 누르면 여기에 쌓입니다.</div>`;
-  $("logtable").onclick = e => { const b = e.target.closest(".x"); if (b) removeRecord(+b.dataset.id); };
+  $("logtable").onclick = e => { const b = e.target.closest(".x"); if (b) removeRecord(b.dataset.id); };
   renderRoutine();
   const got = new Set(earned(records));
   $("badges").innerHTML = BADGES.map(b => `<div class="bdg ${got.has(b.id) ? "got" : ""}"><div class="ic">${b.ic}</div><div class="t">${b.t}</div><div class="s">${got.has(b.id) ? "달성" : b.s}</div></div>`).join("");
@@ -817,7 +872,98 @@ function renderRoutine() {
 let toastT;
 function toast(msg) { const t = $("toast"); t.textContent = msg; t.hidden = false; clearTimeout(toastT); toastT = setTimeout(() => t.hidden = true, 2600); }
 
-/* ================== 11. 탭 · 시작 ================== */
+/* ================== 11. 계정 (Vercel 백엔드가 있을 때만 켜짐) ================== */
+const Account = {
+  user: null, available: false, mode: "login", wTimer: null,
+  async api(method, url, body) {
+    const r = await fetch(url, { method, credentials: "same-origin",
+      headers: method === "GET" ? {} : { "Content-Type": "application/json" },
+      body: method === "GET" ? undefined : JSON.stringify(body) });
+    const j = await r.json().catch(() => ({}));
+    if (!r.ok) throw Object.assign(new Error(j.error || "요청을 처리하지 못했어요"), { status: r.status });
+    return j;
+  },
+  async init() {
+    // /api/me 가 JSON으로 답하면 백엔드가 있는 배포(Vercel). GitHub Pages·claude.ai에서는 404/차단 → 숨김
+    try {
+      const r = await fetch("/api/me", { credentials: "same-origin" });
+      if (!(r.headers.get("content-type") || "").includes("application/json")) return this.render();
+      this.available = true;
+      if (r.ok) { const j = await r.json(); await this.signedIn(j.user, false); }
+    } catch {}
+    this.render();
+  },
+  async signedIn(user, fresh) {
+    this.user = user;
+    if (user.weightKg) { input.weight = user.weightKg; update(false); }
+    try { records = (await this.api("GET", "/api/workouts")).workouts; } catch { records = []; }
+    const local = store.get("records", []);
+    $("migrate").hidden = !(fresh && local.length);
+    $("migrateN").textContent = local.length;
+    this.render(); renderLog();
+  },
+  render() {
+    const b = $("acctBtn");
+    b.hidden = !this.available;
+    b.textContent = this.user ? `${this.user.nickname} 님` : "로그인";
+    b.classList.toggle("on", !!this.user);
+    $("authOut").hidden = !!this.user; $("authIn").hidden = !this.user;
+    $("authTitle").textContent = this.user ? "내 계정" : this.mode === "signup" ? "가입" : "로그인";
+    if (this.user) $("authWho").textContent = this.user.nickname;
+    for (const x of $("authMode").children) x.setAttribute("aria-pressed", String(x.dataset.v === this.mode));
+    $("authWeightRow").hidden = this.mode !== "signup";
+    $("authPw").autocomplete = this.mode === "signup" ? "new-password" : "current-password";
+    $("authSubmit").textContent = this.mode === "signup" ? "가입하고 시작하기" : "로그인";
+    $("authNote").textContent = this.mode === "signup"
+      ? "이메일 없이 닉네임과 비밀번호만 써요. 비밀번호를 잊으면 복구할 수 없어요."
+      : "로그인하면 기록이 계정에 저장돼 어느 기기에서든 볼 수 있어요.";
+    const sync = $("syncHint");
+    sync.textContent = this.user ? `${this.user.nickname} 님 계정에 저장 중` : this.available ? "지금은 이 기기에만 저장돼요. 로그인하면 계정에 저장됩니다." : "기록은 이 기기의 브라우저에만 저장돼요.";
+  },
+  saveWeight(v) {
+    if (!this.user) return;
+    clearTimeout(this.wTimer);
+    this.wTimer = setTimeout(() => this.api("PATCH", "/api/me", { weightKg: Math.round(v) }).catch(() => {}), 800);
+  },
+  wire() {
+    $("acctBtn").onclick = () => { $("authErr").hidden = true; this.render(); $("authDlg").showModal(); };
+    $("authClose").onclick = () => $("authDlg").close();
+    $("authMode").onclick = e => { const b = e.target.closest("button"); if (!b) return; this.mode = b.dataset.v; $("authErr").hidden = true; this.render(); };
+    $("authForm").onsubmit = async e => {
+      e.preventDefault();
+      if (this.user) return;
+      const body = { nickname: $("authNick").value.trim(), password: $("authPw").value };
+      if (this.mode === "signup") body.weightKg = $("authWeight").value || (input.weight || null);
+      $("authSubmit").disabled = true; $("authErr").hidden = true;
+      try {
+        const j = await this.api("POST", this.mode === "signup" ? "/api/auth/signup" : "/api/auth/login", body);
+        $("authPw").value = "";
+        await this.signedIn(j.user, true);
+        toast(this.mode === "signup" ? "가입했어요" : "로그인했어요");
+        if ($("migrate").hidden) $("authDlg").close();
+      } catch (err) { $("authErr").textContent = err.message; $("authErr").hidden = false; }
+      finally { $("authSubmit").disabled = false; }
+    };
+    $("migrateYes").onclick = async () => {
+      const local = store.get("records", []);
+      try {
+        const j = await this.api("POST", "/api/workouts", { workouts: local });
+        records = [...records, ...j.workouts];
+        store.set("records", []);
+        toast(`기록 ${j.workouts.length}개를 계정으로 옮겼어요`);
+      } catch (err) { toast(err.message); return; }
+      $("migrate").hidden = true; $("authDlg").close(); renderLog();
+    };
+    $("migrateNo").onclick = () => { $("migrate").hidden = true; $("authDlg").close(); };
+    $("logoutBtn").onclick = async () => {
+      try { await this.api("POST", "/api/auth/logout", {}); } catch {}
+      this.user = null; records = store.get("records", []);
+      $("authDlg").close(); this.render(); renderLog(); toast("로그아웃했어요");
+    };
+  },
+};
+
+/* ================== 12. 탭 · 시작 ================== */
 document.querySelector(".tabs").onclick = e => {
   const b = e.target.closest("button"); if (!b) return;
   for (const x of document.querySelectorAll(".tabs button")) x.setAttribute("aria-selected", String(x === b));
@@ -829,7 +975,10 @@ $("target").innerHTML = `<span class="status" id="status"></span>`;
 buildForm();
 initMap();
 update(true);
+Account.wire();
+Account.render();
 renderLog();
+Account.init();
 
 // claude.ai에서 열면 AI 설명 버튼이 켜지고, 일반 호스팅에서는 기본 팁만 표시
 if (window.claude?.use) window.claude.use("sample").then(fn => {

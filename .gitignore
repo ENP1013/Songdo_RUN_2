@@ -1,2 +1,6 @@
 data/osm_raw.json
 __pycache__/
+.omc/
+node_modules/
+.vercel/
+.env*
