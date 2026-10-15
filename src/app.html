@@ -1,0 +1,839 @@
+<title>Run &amp; Walk 코스 메이커</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Gothic+A1:wght@500;700;800&family=IBM+Plex+Sans+KR:wght@400;500;600&family=IBM+Plex+Mono:wght@500;600&display=swap">
+<style>
+/*__LEAFLET_CSS__*/
+</style>
+<style>
+/* Layout: 좌측 조건 패널(데스크톱 sticky) + 우측 결과(시간 카드 → 지도 → 상세). 모바일은 한 열 */
+:root{
+  --bg:#EEF2EF; --surface:#FFFFFF; --sunk:#E3E9E5; --ink:#15201B; --muted:#56645D; --line:#D3DBD6;
+  --accent:#1E6A50; --accent-soft:#D6E9E0; --on-accent:#FFFFFF;
+  --signal:#D9531F; --signal-soft:#FBE3D8; --water:#2C6BA8; --warn:#9A6400;
+  --route:#E0261B; --start:#1E8A4C; --dest:#2C6BA8;
+  --map-land:#F4F3EE; --map-park:#CFE6C9; --map-water:#B9D6EE; --map-road:#FFFFFF; --map-road-edge:#D5D3CB; --map-foot:#C9C3B4; --map-bound:#7D8A84; --tile-filter:none;
+  --f-display:"Gothic A1","Apple SD Gothic Neo","Malgun Gothic",sans-serif;
+  --f-body:"IBM Plex Sans KR","Apple SD Gothic Neo","Malgun Gothic",sans-serif;
+  --f-num:"IBM Plex Mono",ui-monospace,"Consolas",monospace;
+  --r:10px;
+}
+@media (prefers-color-scheme:dark){:root:not([data-theme="light"]){
+  --bg:#0E1412; --surface:#161E1B; --sunk:#1D2723; --ink:#E5ECE8; --muted:#97A59E; --line:#2A3631;
+  --accent:#55B892; --accent-soft:#1E3A30; --on-accent:#0B1310;
+  --signal:#FF8A5C; --signal-soft:#3A2219; --water:#6AA6DE; --warn:#E3B04B;
+  --route:#FF4A3D; --start:#3FCB7A; --dest:#6AA6DE;
+  --map-land:#1A201E; --map-park:#24412F; --map-water:#1F3A52; --map-road:#3A4441; --map-road-edge:#2B3431; --map-foot:#4A5551; --map-bound:#8FA39A; --tile-filter:invert(1) hue-rotate(180deg) brightness(.9) contrast(.85) saturate(.6); color-scheme:dark}}
+:root[data-theme="dark"]{
+  --bg:#0E1412; --surface:#161E1B; --sunk:#1D2723; --ink:#E5ECE8; --muted:#97A59E; --line:#2A3631;
+  --accent:#55B892; --accent-soft:#1E3A30; --on-accent:#0B1310;
+  --signal:#FF8A5C; --signal-soft:#3A2219; --water:#6AA6DE; --warn:#E3B04B;
+  --route:#FF4A3D; --start:#3FCB7A; --dest:#6AA6DE;
+  --map-land:#1A201E; --map-park:#24412F; --map-water:#1F3A52; --map-road:#3A4441; --map-road-edge:#2B3431; --map-foot:#4A5551; --map-bound:#8FA39A; --tile-filter:invert(1) hue-rotate(180deg) brightness(.9) contrast(.85) saturate(.6); color-scheme:dark}
+
+*{box-sizing:border-box}
+[hidden]{display:none!important}
+body{background:var(--bg);color:var(--ink);font-family:var(--f-body);font-size:15px;line-height:1.55;
+  padding-left:max(16px,env(safe-area-inset-left,0px));padding-right:max(16px,env(safe-area-inset-right,0px));padding-block:20px 48px}
+.wrap{max-width:1180px;margin:0 auto;display:flex;flex-direction:column;gap:20px}
+h1,h2,h3{font-family:var(--f-display);text-wrap:balance;margin:0;letter-spacing:-.01em}
+.num{font-family:var(--f-num);font-variant-numeric:tabular-nums}
+button,input,select{font:inherit;color:inherit}
+:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+
+header.top{display:flex;flex-wrap:wrap;align-items:flex-end;justify-content:space-between;gap:12px}
+header.top h1{font-size:clamp(24px,4vw,32px);font-weight:800}
+header.top h1 span{color:var(--accent)}
+header.top p{margin:4px 0 0;color:var(--muted);max-width:62ch}
+.tabs{display:flex;gap:4px;background:var(--sunk);padding:4px;border-radius:999px}
+.tabs button{border:0;background:transparent;padding:7px 16px;border-radius:999px;cursor:pointer;font-weight:600;color:var(--muted)}
+.tabs button[aria-selected="true"]{background:var(--surface);color:var(--ink);box-shadow:0 1px 2px rgba(0,0,0,.08)}
+
+.grid{display:grid;grid-template-columns:330px minmax(0,1fr);gap:20px;align-items:start}
+@media (max-width:860px){.grid{grid-template-columns:minmax(0,1fr)}}
+.grid>*{min-width:0}
+
+.panel{background:var(--surface);border:1px solid var(--line);border-radius:var(--r);padding:18px;display:flex;flex-direction:column;gap:16px}
+@media (min-width:861px){.panel.sticky{position:sticky;top:calc(env(safe-area-inset-top,0px) + 12px)}}
+.field{display:flex;flex-direction:column;gap:6px}
+.label{font-size:12px;font-weight:600;letter-spacing:.06em;color:var(--muted);text-transform:uppercase}
+select,input[type=number],input[type=text]{background:var(--bg);border:1px solid var(--line);border-radius:8px;padding:9px 10px;width:100%}
+.seg{display:grid;grid-auto-flow:column;grid-auto-columns:1fr;gap:4px;background:var(--sunk);padding:4px;border-radius:9px}
+.seg button{border:0;background:transparent;padding:8px 4px;border-radius:6px;cursor:pointer;font-weight:600;font-size:14px;color:var(--muted);min-width:0}
+.seg button small{display:block;font-family:var(--f-num);font-weight:500;font-size:11px;opacity:.85}
+.seg button[aria-pressed="true"]{background:var(--surface);color:var(--accent);box-shadow:0 1px 2px rgba(0,0,0,.1)}
+.chips{display:flex;flex-wrap:wrap;gap:6px}
+.chip{border:1px solid var(--line);background:transparent;border-radius:999px;padding:6px 12px;cursor:pointer;font-size:14px}
+.chip[aria-pressed="true"]{background:var(--accent);border-color:var(--accent);color:var(--on-accent)}
+.inline{display:flex;align-items:center;gap:8px;font-size:14px;color:var(--muted);flex-wrap:wrap}
+.hint{font-size:12.5px;color:var(--muted);margin:0}
+
+/* 출발·도착 */
+.place{display:flex;align-items:center;gap:10px;padding:10px 12px;border:1px solid var(--line);border-radius:8px;background:var(--bg)}
+.place .pin{width:12px;height:12px;border-radius:50%;flex:none;border:2px solid var(--surface);box-shadow:0 0 0 1px var(--line)}
+.place .nm{font-weight:600;min-width:0;overflow-wrap:anywhere;flex:1}
+.place .tag{font-size:11.5px;color:var(--muted)}
+.mini{display:flex;gap:6px;flex-wrap:wrap}
+.mini button{border:1px solid var(--line);background:var(--surface);border-radius:7px;padding:5px 10px;font-size:13px;cursor:pointer;font-weight:600}
+.mini button:disabled{opacity:.45;cursor:default}
+
+/* 결과 */
+.results{display:flex;flex-direction:column;gap:14px;min-width:0}
+.target{display:flex;flex-wrap:wrap;gap:6px 16px;font-size:13.5px;color:var(--muted);align-items:center}
+.target b{color:var(--ink)}
+.status{margin-left:auto;font-size:12.5px;color:var(--accent);font-weight:600}
+.cards{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:10px}
+@media (max-width:560px){.cards{grid-template-columns:1fr}}
+.card{background:var(--surface);border:1px solid var(--line);border-radius:var(--r);padding:14px;text-align:left;cursor:pointer;display:flex;flex-direction:column;gap:8px;min-width:0}
+.card[aria-pressed="true"]{border-color:var(--route);box-shadow:inset 0 0 0 1px var(--route)}
+.card .min{font-family:var(--f-num);font-size:30px;font-weight:600;line-height:1}
+.card .min small{font-family:var(--f-body);font-size:14px;color:var(--muted);margin-left:2px}
+.ticks{height:6px;background:repeating-linear-gradient(90deg,var(--line) 0 1px,transparent 1px 8px);position:relative;border-radius:2px}
+.ticks i{position:absolute;inset:0 auto 0 0;background:var(--route);border-radius:2px;opacity:.85}
+.card .name{font-weight:600;font-size:15px;overflow-wrap:anywhere}
+.card .stats{display:flex;gap:12px;font-size:13px;color:var(--muted);flex-wrap:wrap}
+.card .stats b{color:var(--ink);font-family:var(--f-num);font-weight:600}
+.badge{display:inline-flex;align-items:center;gap:4px;font-size:11.5px;font-weight:600;padding:2px 8px;border-radius:999px;background:var(--sunk);color:var(--muted)}
+.badge.flat{background:var(--accent-soft);color:var(--accent)}
+.badge.hill{background:var(--signal-soft);color:var(--signal)}
+.badge.interval{background:var(--sunk);color:var(--water)}
+.badge.park{background:var(--accent-soft);color:var(--accent)}
+.badge.warn{background:var(--signal-soft);color:var(--warn)}
+.tags{display:flex;gap:4px;flex-wrap:wrap}
+
+.mapcard{background:var(--surface);border:1px solid var(--line);border-radius:var(--r);overflow:hidden;position:relative}
+#map{height:440px;background:var(--map-land)}
+@media (max-width:560px){#map{height:340px}}
+.leaflet-container{font-family:var(--f-body);background:var(--map-land)}
+.leaflet-tile-pane{filter:var(--tile-filter)}
+.leaflet-control-attribution{background:color-mix(in srgb,var(--surface) 85%,transparent)!important;color:var(--muted)!important;font-size:10.5px}
+.leaflet-control-attribution a{color:var(--muted)!important}
+.leaflet-bar a{background:var(--surface);color:var(--ink);border-color:var(--line)}
+.pickbar{position:absolute;z-index:500;top:10px;left:56px;right:10px;display:flex;gap:8px;align-items:center;flex-wrap:wrap;pointer-events:none}
+.pickbar>*{pointer-events:auto}
+.pickbar .seg{background:color-mix(in srgb,var(--surface) 92%,transparent);box-shadow:0 1px 4px rgba(0,0,0,.15)}
+.pickbar .seg button{padding:6px 12px;font-size:13px}
+.pickbar .say{font-size:12.5px;background:color-mix(in srgb,var(--surface) 92%,transparent);padding:5px 10px;border-radius:7px;color:var(--muted);box-shadow:0 1px 4px rgba(0,0,0,.12)}
+.turn-label{background:var(--ink);color:var(--bg);border-radius:6px;font:700 11.5px/1 var(--f-body);padding:4px 7px;white-space:nowrap;position:absolute;left:0;top:-10px;transform:translate(-50%,-100%);box-shadow:0 1px 4px rgba(0,0,0,.3)}
+.turn-dot{width:12px;height:12px;border-radius:2px;background:var(--ink);border:2px solid #fff;position:absolute;left:-6px;top:-6px;transform:rotate(45deg)}
+.pin-label{background:var(--start);color:#fff;border-radius:6px;font:700 12px/1 var(--f-body);padding:5px 8px;white-space:nowrap;box-shadow:0 1px 4px rgba(0,0,0,.3);transform:translate(-50%,-100%);position:absolute;left:0;top:-8px}
+.pin-label.dest{background:var(--dest)}
+.pin-dot{width:14px;height:14px;border-radius:50%;background:var(--start);border:3px solid #fff;box-shadow:0 1px 4px rgba(0,0,0,.35);position:absolute;left:-7px;top:-7px}
+.pin-dot.dest{background:var(--dest)}
+.maplegend{display:flex;gap:14px;flex-wrap:wrap;font-size:12px;color:var(--muted);padding:8px 14px;border-top:1px solid var(--line)}
+.maplegend i{display:inline-block;width:14px;height:10px;border-radius:2px;margin-right:5px;vertical-align:-1px}
+
+.detail{background:var(--surface);border:1px solid var(--line);border-radius:var(--r);overflow:hidden}
+.detail-head{padding:16px 18px;display:flex;flex-wrap:wrap;justify-content:space-between;gap:10px;align-items:flex-start;border-bottom:1px solid var(--line)}
+.detail-head h2{font-size:21px}
+.detail-head .sub{color:var(--muted);font-size:13.5px;margin-top:2px;display:flex;gap:6px;flex-wrap:wrap;align-items:center}
+.kpis{display:grid;grid-template-columns:repeat(5,minmax(0,1fr));border-bottom:1px solid var(--line)}
+@media (max-width:700px){.kpis{grid-template-columns:repeat(2,minmax(0,1fr))}}
+.kpi{padding:12px 18px;border-right:1px solid var(--line);border-bottom:1px solid var(--line);margin-bottom:-1px}
+.kpi:last-child{border-right:0}
+.kpi .k{font-size:11.5px;letter-spacing:.06em;color:var(--muted);font-weight:600}
+.kpi .v{font-family:var(--f-num);font-size:21px;font-weight:600}
+.kpi .v.kcal{color:var(--signal)}
+.kpi .v.park{color:var(--accent)}
+.kpi .s{font-size:11.5px;color:var(--muted)}
+.detail-body{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr)}
+@media (max-width:760px){.detail-body{grid-template-columns:1fr}}
+.side{padding:16px 18px;display:flex;flex-direction:column;gap:14px;min-width:0}
+.side + .side{border-left:1px solid var(--line)}
+@media (max-width:760px){.side + .side{border-left:0;border-top:1px solid var(--line)}}
+.side h3{font-size:14px;font-weight:700}
+dl.facts{margin:0;display:grid;grid-template-columns:auto 1fr;gap:6px 14px;font-size:14px}
+dl.facts dt{color:var(--muted)}
+dl.facts dd{margin:0;overflow-wrap:anywhere}
+.ivl{display:flex;height:22px;border-radius:5px;overflow:hidden;gap:1px}
+.ivl span{display:block;height:100%}
+.ivl .w{background:var(--line)}
+.ivl .f{background:var(--signal)}
+.ivl .e{background:var(--accent-soft)}
+.legend{display:flex;gap:12px;font-size:12px;color:var(--muted);flex-wrap:wrap}
+.legend i{display:inline-block;width:10px;height:10px;border-radius:2px;margin-right:4px;vertical-align:-1px}
+ul.tips{margin:0;padding-left:18px;display:flex;flex-direction:column;gap:4px;font-size:14px}
+.motto{font-family:var(--f-display);font-weight:700;font-size:15px;color:var(--accent);margin:0}
+.ai-out{font-size:14px;display:flex;flex-direction:column;gap:8px}
+.ai-out p{margin:0}
+.src{font-size:11.5px;color:var(--muted);margin:0}
+.actions{display:flex;gap:8px;flex-wrap:wrap}
+.btn{border:1px solid var(--line);background:var(--surface);border-radius:8px;padding:9px 14px;cursor:pointer;font-weight:600;font-size:14px}
+.btn.primary{background:var(--accent);border-color:var(--accent);color:var(--on-accent)}
+.btn:disabled{opacity:.5;cursor:default}
+.alert{margin:0;padding:10px 12px;border-radius:8px;background:var(--signal-soft);color:var(--ink);font-size:14px}
+
+/* 기록 */
+.rec-grid{display:grid;grid-template-columns:minmax(0,1.3fr) minmax(0,1fr);gap:20px;align-items:start}
+@media (max-width:860px){.rec-grid{grid-template-columns:minmax(0,1fr)}}
+.sum{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:10px}
+.sum div{background:var(--sunk);border-radius:8px;padding:10px 12px}
+.sum .k{font-size:12px;color:var(--muted)}
+.sum .v{font-family:var(--f-num);font-size:20px;font-weight:600}
+.chart svg{width:100%;height:auto;display:block}
+table.log{width:100%;border-collapse:collapse;font-size:13.5px}
+table.log th{text-align:left;font-size:11.5px;color:var(--muted);font-weight:600;letter-spacing:.05em;padding:6px 6px;border-bottom:1px solid var(--line)}
+table.log td{padding:7px 6px;border-bottom:1px solid var(--line);vertical-align:top}
+table.log td.n{font-family:var(--f-num);text-align:right;white-space:nowrap}
+.x{border:0;background:transparent;color:var(--muted);cursor:pointer;font-size:16px;padding:0 4px}
+.tablewrap{overflow-x:auto}
+.routine{display:grid;grid-template-columns:repeat(7,minmax(0,1fr));gap:4px}
+.routine div{background:var(--sunk);border-radius:6px;padding:8px 6px;min-height:84px;font-size:12px;display:flex;flex-direction:column;gap:3px;min-width:0}
+.routine .d{font-weight:700;color:var(--muted)}
+.routine .on{background:var(--accent-soft)}
+.routine .on b{color:var(--accent);font-family:var(--f-num)}
+@media (max-width:560px){.routine{grid-template-columns:repeat(4,minmax(0,1fr))}}
+.badges{display:grid;grid-template-columns:repeat(auto-fill,minmax(130px,1fr));gap:10px}
+.bdg{border:1px dashed var(--line);border-radius:var(--r);padding:12px;display:flex;flex-direction:column;gap:4px;min-height:96px}
+.bdg .ic{font-family:var(--f-num);font-weight:600;font-size:20px;color:var(--muted)}
+.bdg.got{border-style:solid;border-color:var(--accent);background:var(--accent-soft)}
+.bdg.got .ic{color:var(--accent)}
+.bdg .t{font-weight:700;font-size:14px}
+.bdg .s{font-size:12px;color:var(--muted)}
+.empty{color:var(--muted);font-size:14px;padding:18px;text-align:center;background:var(--sunk);border-radius:8px}
+
+.toast{position:fixed;left:50%;bottom:calc(20px + env(safe-area-inset-bottom,0px));transform:translateX(-50%);background:var(--ink);color:var(--bg);padding:10px 16px;border-radius:999px;font-size:14px;font-weight:600;z-index:1000;max-width:calc(100% - 32px)}
+.note{font-size:12px;color:var(--muted);border-top:1px solid var(--line);padding-top:12px;margin:0}
+@media (prefers-reduced-motion:no-preference){.card,.btn,.chip,.seg button{transition:background .15s,border-color .15s,color .15s}}
+</style>
+
+<div class="wrap">
+  <header class="top">
+    <div>
+      <h1>Run <span>&amp;</span> Walk 코스 메이커</h1>
+      <p>송도 지도에서 출발지를 찍고 페이스와 취향을 고르면, 실제 보행로를 따라 20 · 40 · 60분 코스를 빨간 경로로 그려 드려요.</p>
+    </div>
+    <nav class="tabs" role="tablist">
+      <button role="tab" id="tab-plan" aria-selected="true" data-tab="plan">코스 추천</button>
+      <button role="tab" id="tab-log" aria-selected="false" data-tab="log">기록 · 배지</button>
+    </nav>
+  </header>
+
+  <!-- 코스 추천 -->
+  <section id="view-plan" class="grid">
+    <form class="panel sticky" id="form" autocomplete="off">
+      <div class="field">
+        <span class="label">출발지</span>
+        <div class="place"><span class="pin" style="background:var(--start)"></span><span class="nm" id="startName"></span></div>
+        <div class="mini">
+          <select id="quick" aria-label="출발지 빠른 선택" style="flex:1;min-width:140px;padding:5px 8px;font-size:13px"></select>
+          <button type="button" id="locBtn">현재 위치</button>
+        </div>
+      </div>
+      <div class="field">
+        <span class="label">도착지</span>
+        <div class="place"><span class="pin" style="background:var(--dest)"></span><span class="nm" id="destName"></span><span class="tag" id="destTag"></span></div>
+        <div class="mini">
+          <select id="destQuick" aria-label="도착지 빠른 선택" style="flex:1 1 100%;padding:5px 8px;font-size:13px"></select>
+          <button type="button" id="destPick">지도에서 도착지 찍기</button>
+          <button type="button" id="destReset">출발지로 되돌리기</button>
+        </div>
+      </div>
+      <div class="field">
+        <span class="label">페이스</span>
+        <div class="seg" id="pace" role="group" aria-label="페이스"></div>
+        <label class="inline"><input type="checkbox" id="customOn"> 내 페이스 직접 입력
+          <input type="number" id="customPace" min="3" max="20" step="0.5" value="6.5" style="width:84px" disabled> 분/km</label>
+      </div>
+      <div class="field">
+        <span class="label">난이도</span>
+        <div class="seg" id="difficulty" role="group" aria-label="난이도"></div>
+      </div>
+      <div class="field">
+        <span class="label">목표</span>
+        <div class="seg" id="goal" role="group" aria-label="목표"></div>
+      </div>
+      <div class="field">
+        <span class="label">선호 풍경 (여러 개 선택)</span>
+        <div class="chips" id="scenery" role="group" aria-label="선호 풍경"></div>
+      </div>
+      <div class="field">
+        <label class="label" for="weight">체중 (kg, 칼로리 계산용)</label>
+        <input type="number" id="weight" min="30" max="150" step="1" value="65">
+      </div>
+      <p class="hint">조건을 바꾸면 코스를 바로 다시 계산합니다. 입력값은 이 브라우저에만 저장돼요.</p>
+    </form>
+
+    <div class="results">
+      <div class="target" id="target"></div>
+      <div class="cards" id="cards"></div>
+      <div class="mapcard">
+        <div id="map" role="application" aria-label="송도 코스 지도"></div>
+        <div class="pickbar">
+          <div class="seg" id="pickMode" role="group" aria-label="지도 탭으로 지정할 지점">
+            <button type="button" data-v="start">출발지 찍기</button>
+            <button type="button" data-v="dest">도착지 찍기</button>
+          </div>
+          <span class="say" id="pickSay"></span>
+        </div>
+        <div class="maplegend">
+          <span><i style="background:var(--route)"></i>추천 코스</span>
+          <span><i style="background:var(--map-park)"></i>공원</span>
+          <span><i style="background:var(--map-water)"></i>물</span>
+          <span><i style="background:transparent;border:1.5px dashed var(--map-bound)"></i>송도동 경계</span>
+          <span><i style="background:var(--ink);width:10px;height:10px;transform:rotate(45deg)"></i>반환점 (출발지로 돌아오는 코스)</span>
+        </div>
+      </div>
+      <article class="detail" id="detail"></article>
+      <p class="note">지도·보행로·공원 데이터: © OpenStreetMap 기여자(ODbL). 경로는 OSM 보행로 위에서 계산한 추정 경로이며, 공사·통제 구간은 반영되지 않을 수 있어요. 거리 = 속도 × 시간, 칼로리 = MET × 체중(kg) × 시간(h).</p>
+    </div>
+  </section>
+
+  <!-- 기록 · 배지 -->
+  <section id="view-log" hidden>
+    <div class="rec-grid">
+      <div class="panel">
+        <h2 style="font-size:18px">이번 주 기록</h2>
+        <div class="sum" id="sum"></div>
+        <div class="chart" id="chart"></div>
+        <div class="tablewrap" id="logtable"></div>
+      </div>
+      <div class="panel">
+        <h2 style="font-size:18px">주간 루틴 제안</h2>
+        <p class="hint" id="routineHint"></p>
+        <div class="routine" id="routine"></div>
+        <h2 style="font-size:18px;margin-top:8px">달성 배지</h2>
+        <div class="badges" id="badges"></div>
+      </div>
+    </div>
+  </section>
+</div>
+<div class="toast" id="toast" hidden></div>
+
+<script type="application/json" id="songdo-data">__SONGDO_DATA__</script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.js"></script>
+<script>
+/*__ENGINE__*/
+</script>
+<script>
+/* ================== 1. 상수 · 계산 (코드가 숫자를 책임진다) ================== */
+const PACES = {
+  walk: { label: "걷기", kmh: 5,  met: 3.5 },
+  jog:  { label: "조깅", kmh: 8,  met: 7.0 },
+  run:  { label: "러닝", kmh: 10, met: 9.8 },
+};
+const DIFFS = {
+  flat:     { label: "평지",   metAdd: 0 },
+  hill:     { label: "오르막", metAdd: 1.5 },
+  interval: { label: "인터벌", metAdd: 1.0 },
+};
+const GOALS = { diet: "다이어트", record: "기록", healing: "힐링" };
+const SCENERY = { park: "공원", water: "물가", city: "도심", mountain: "언덕(봉재산)" };
+const DURATIONS = [20, 40, 60];
+
+const Calc = {
+  speedKmh(pace, customPaceMinPerKm) { return customPaceMinPerKm ? 60 / customPaceMinPerKm : PACES[pace].kmh; },
+  distanceKm(kmh, min) { return kmh * (min / 60); },
+  // 직접 입력 페이스는 속도로 MET 근사: 6.5 km/h 미만 걷기, 이후 조깅/러닝
+  baseMet(pace, kmh, custom) {
+    if (!custom) return PACES[pace].met;
+    if (kmh < 6.5) return Math.max(2.5, 3.5 + (kmh - 5) * 0.4);
+    if (kmh < 9) return 7.0;
+    return 7.0 + (kmh - 8) * 1.4;
+  },
+  kcal(met, kg, min) { return met * kg * (min / 60); },
+  intervalPlan(min) {   // 워밍업 → (빠르게 1분 + 천천히 2분) × n → 쿨다운
+    const warm = min >= 40 ? 5 : 3;
+    const sets = Math.floor((min - warm * 2) / 3);
+    return { warm, sets, cool: min - warm - sets * 3 };
+  },
+};
+// 단위 포맷터: 화면 전체에서 이 함수만 사용
+const fmtKm = x => `${x.toFixed(2)} km`;
+const fmtKcal = x => `${Math.round(x)} kcal`;
+const fmtMin = x => `${Math.round(x)}분`;
+const fmtPct = x => `${Math.round(x * 100)}%`;
+const fmtPace = kmh => { const p = 60 / kmh, m = Math.floor(p), s = Math.round((p - m) * 60); return `${m}:${String(s).padStart(2, "0")} /km`; };
+
+/* ================== 2. 송도 데이터 · 장소 ================== */
+const DATA = JSON.parse(document.getElementById("songdo-data").textContent);
+const MAPDATA = Engine.load(DATA);
+const STATIONS = [
+  { name: "센트럴파크역", at: [37.39351, 126.63456] },
+  { name: "국제업무지구역", at: [37.39979, 126.63041] },
+  { name: "인천대입구역", at: [37.38612, 126.63945] },
+  { name: "지식정보단지역", at: [37.37747, 126.64592] },
+  { name: "테크노파크역", at: [37.38230, 126.65625] },
+  { name: "캠퍼스타운역", at: [37.38817, 126.66189] },
+  { name: "송도달빛축제공원역", at: [37.40681, 126.62611] },
+];
+// 빠른 선택용 공원: 한글 이름, 둘레 800 m 이상, 같은 이름은 가장 큰 것
+const PARK_PLACES = (() => {
+  const by = new Map();
+  for (const p of MAPDATA.parks) {
+    if (!/[가-힣]/.test(p.name) || p.per < 800 || !Engine.inSongdo(p.center)) continue;
+    const nm = p.name.replace(/^송도\s?/, "");
+    if (!by.has(nm) || by.get(nm).per < p.per) by.set(nm, { name: nm, at: p.center, per: p.per });
+  }
+  return [...by.values()].sort((a, b) => a.name.localeCompare(b.name, "ko"));
+})();
+const PLACES = [...STATIONS, ...PARK_PLACES];
+function placeName(at) {   // 탭한 지점 이름: 400 m 안의 가장 가까운 역·공원
+  let best = null, bd = 400;
+  for (const p of PLACES) { const d = Engine.distM(at, p.at); if (d < bd) { bd = d; best = p; } }
+  return best ? (bd < 80 ? best.name : `${best.name} 부근`) : "지도에서 고른 지점";
+}
+
+/* ================== 3. 저장소 (브라우저별, 실패해도 동작) ================== */
+const store = {
+  get(k, d) { try { const v = localStorage.getItem("rw:" + k); return v ? JSON.parse(v) : d; } catch { return d; } },
+  set(k, v) { try { localStorage.setItem("rw:" + k, JSON.stringify(v)); } catch {} },
+};
+
+/* ================== 4. 목표별 기본 팁 (LLM 실패 시에도 동작) ================== */
+const TIPS = {
+  diet: {
+    tips: ["대화가 가능한 정도의 강도(최대심박 60~70%)를 길게 유지하면 지방 연소 비율이 높아요.",
+           "식후 1~2시간 뒤에 나가면 속이 편하고 혈당 관리에도 좋아요.",
+           "운동 후 30분 안에 물 한 컵과 단백질 간식으로 마무리하세요."],
+    motto: "오늘의 한 걸음이 다음 주 체중계 숫자를 바꿉니다.",
+  },
+  record: {
+    tips: ["처음 1/3은 목표 페이스보다 10초 느리게, 마지막 1/3에서 끌어올리는 네거티브 스플릿을 시도해 보세요.",
+           "1 km마다 시계를 보고 페이스 오차를 ±10초 안에 맞추는 연습을 하세요.",
+           "같은 코스를 반복하면 기록 비교가 정확해져요. 오늘 기록을 저장해 두세요."],
+    motto: "어제의 나보다 1초 빠르면 오늘은 성공입니다.",
+  },
+  healing: {
+    tips: ["4걸음 들이쉬고 4걸음 내쉬는 리듬 호흡으로 머리를 비워 보세요.",
+           "공원 구간에서는 이어폰을 잠시 빼고 물소리·바람 소리에 집중해 보세요.",
+           "속도보다 자세: 어깨 힘을 빼고 시선은 10 m 앞을 보세요."],
+    motto: "빨리 가지 않아도 됩니다. 오늘 밖에 나온 것으로 충분해요.",
+  },
+};
+const DIFF_TIP = {
+  flat: "송도는 대부분 평지라 일정한 페이스 유지에 집중하기 좋아요.",
+  hill: "오르막에서는 보폭을 줄이고 팔치기를 키우세요. 내리막은 무릎에 무리가 가지 않게 천천히.",
+  interval: "빠른 구간은 '대화가 힘든' 정도, 느린 구간은 호흡이 돌아올 때까지 편하게.",
+};
+
+/* ================== 5. 상태 ================== */
+const DEFAULT_INPUT = { start: STATIONS[0], dest: STATIONS[0], pace: "jog", customOn: false, customPace: 6.5,
+  difficulty: "flat", goal: "healing", scenery: ["park"], weight: 65 };
+let input = Object.assign({}, DEFAULT_INPUT, store.get("input", {}));
+const validPlace = p => p && typeof p === "object" && Array.isArray(p.at) && Engine.inSongdo(p.at);
+if (!validPlace(input.start)) input.start = DEFAULT_INPUT.start;
+if (!validPlace(input.dest)) input.dest = input.start;
+input.scenery = (input.scenery || []).filter(s => SCENERY[s]);
+if (!PACES[input.pace]) input.pace = "jog";
+let records = store.get("records", []);
+let selected = 1;       // 기본으로 40분 코스를 펼침
+let results = [];
+let pickMode = "start";
+const aiCache = {};
+const samePlace = () => Engine.distM(input.start.at, input.dest.at) < 30;
+
+const $ = id => document.getElementById(id);
+const esc = s => String(s).replace(/[&<>"']/g, ch => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[ch]));
+
+/* ================== 6. 지도 (Leaflet + OSM 타일, 타일이 막히면 OSM 벡터 데이터로 직접 그림) ================== */
+const css = n => getComputedStyle(document.documentElement).getPropertyValue(n).trim();
+let map, baseLayer, routeLayer, tiles, tilesOk = false;
+function initMap() {
+  const all = MAPDATA.boundary.flatMap(b => b.rings.flat());
+  const lats = all.map(p => p[0]), lons = all.map(p => p[1]);
+  const songdo = L.latLngBounds([Math.min(...lats), Math.min(...lons)], [Math.max(...lats), Math.max(...lons)]);
+  map = L.map("map", { preferCanvas: true, zoomSnap: 0.5, minZoom: 12.5, maxZoom: 18,
+    maxBounds: songdo.pad(0.25), maxBoundsViscosity: 0.8, attributionControl: true });
+  map.attributionControl.setPrefix(false).addAttribution("© OpenStreetMap 기여자");
+  map.fitBounds(songdo.pad(-0.15));
+  map.on("click", e => setPoint(pickMode, [e.latlng.lat, e.latlng.lng]));
+  // 배경: OSM 공용 타일. claude.ai 페이지처럼 외부 이미지가 막힌 곳에서는 실패하므로 벡터 지도로 대체
+  tiles = L.tileLayer("https://tile.openstreetmap.org/{z}/{x}/{y}.png", { maxZoom: 19, crossOrigin: true });
+  let errors = 0;
+  tiles.on("tileload", () => { if (!tilesOk) { tilesOk = true; drawBase(); } });
+  tiles.on("tileerror", () => { if (!tilesOk && ++errors >= 3) { tiles.remove(); drawBase(); } });
+  tiles.addTo(map);
+  drawBase();
+  routeLayer = L.layerGroup().addTo(map);
+  // 테마가 바뀌면 지도 색을 다시 칠함
+  try { matchMedia("(prefers-color-scheme: dark)").addEventListener("change", () => { drawBase(); drawRoute(); }); } catch {}
+  new MutationObserver(() => { drawBase(); drawRoute(); }).observe(document.documentElement, { attributes: true, attributeFilter: ["data-theme"] });
+}
+function drawBase() {
+  if (baseLayer) baseLayer.remove();
+  baseLayer = L.layerGroup().addTo(map);
+  const C = { park: css("--map-park"), water: css("--map-water"), road: css("--map-road"), edge: css("--map-road-edge"), foot: css("--map-foot"), bound: css("--map-bound") };
+  const poly = (rings, color, op = 1) => L.polygon(rings, { stroke: false, fillColor: color, fillOpacity: op, interactive: false }).addTo(baseLayer);
+  const boundary = () => MAPDATA.boundary.forEach(b => L.polygon(b.rings, { color: C.bound, weight: 1.5, dashArray: "6 5", fill: false, interactive: false }).addTo(baseLayer));
+  if (tilesOk) {   // 타일 위에는 공원 강조와 송도동 경계만 얹음
+    MAPDATA.parks.forEach(p => poly(p.rings, css("--accent"), 0.18));
+    boundary();
+    return;
+  }
+  MAPDATA.waters.forEach(w => poly(w.rings, C.water));
+  MAPDATA.waterLines.forEach(l => L.polyline(l, { color: C.water, weight: 3, interactive: false }).addTo(baseLayer));
+  MAPDATA.parks.forEach(p => poly(p.rings, C.park));
+  // 도로: 등급별 굵기 (0 보행로, 1 생활도로, 2 간선, 3 자동차 전용)
+  const o = DATA.origin, sc = DATA.scale, n = DATA.nodes;
+  const pt = i => [(n[2 * i] + o[0]) / sc, (n[2 * i + 1] + o[1]) / sc];
+  const groups = [[], [], [], []];
+  for (const w of DATA.ways) groups[w[0]].push(w.slice(1).map(pt));
+  const style = [
+    { color: C.foot, weight: 1.2, dashArray: "3 3" },
+    { color: C.road, weight: 2.5 },
+    { color: C.road, weight: 4.5 },
+    { color: C.edge, weight: 5 },
+  ];
+  [3, 2, 1].forEach(k => L.polyline(groups[k], { color: C.edge, weight: style[k].weight + 1.5, interactive: false }).addTo(baseLayer));
+  [3, 2, 1, 0].forEach(k => L.polyline(groups[k], { ...style[k], interactive: false }).addTo(baseLayer));
+  boundary();
+}
+function pinIcon(text, cls) {
+  return L.divIcon({ className: "", iconSize: [0, 0], html: `<div class="pin-dot ${cls}"></div><div class="pin-label ${cls}">${esc(text)}</div>` });
+}
+function drawRoute(fit = false) {
+  if (!routeLayer) return;
+  routeLayer.clearLayers();
+  const r = results[selected];
+  const same = samePlace();
+  if (r && r.path) {
+    const ll = r.path;
+    L.polyline(ll, { color: "#ffffff", weight: 9, opacity: 0.9, lineJoin: "round", interactive: false }).addTo(routeLayer);
+    L.polyline(ll, { color: css("--route"), weight: 5, opacity: 0.95, lineJoin: "round", interactive: false }).addTo(routeLayer);
+    const c = r.c;
+    // 반환점은 출발지로 돌아오는 코스에서만 표시
+    if (same && c.turn) L.marker(c.turn, { interactive: false, keyboard: false, zIndexOffset: 500,
+      icon: L.divIcon({ className: "", iconSize: [0, 0], html: `<div class="turn-dot"></div><div class="turn-label">${c.turnLabel}${c.reps > 1 ? ` · ${c.reps}회` : ""}</div>` }) }).addTo(routeLayer);
+    if (fit) map.fitBounds(L.latLngBounds([...ll, input.start.at, input.dest.at]), { padding: [40, 40], maxZoom: 16.5 });
+  }
+  if (!same) L.marker(input.dest.at, { icon: pinIcon("도착", "dest"), interactive: false }).addTo(routeLayer);
+  L.marker(input.start.at, { icon: pinIcon(same ? "출발·도착" : "출발", ""), interactive: false }).addTo(routeLayer);
+}
+
+/* ================== 7. 입력 ================== */
+function setPoint(which, at, name) {
+  if (!Engine.inSongdo(at)) { toast("송도동 안에서 골라 주세요"); return; }
+  if (Engine.nearestNode(at, 400) < 0) { toast("근처에 걸을 수 있는 길이 없어요. 다른 지점을 골라 주세요"); return; }
+  const p = { name: name || placeName(at), at };
+  if (which === "dest") { input.dest = p; pickMode = "start"; }
+  else { input.start = p; input.dest = p; }   // 출발지를 정하면 도착지도 같은 곳으로
+  update(true);
+}
+
+function buildForm() {
+  // 출발지·도착지 모두 역·공원 목록에서 고를 수 있음
+  const options = `<optgroup label="역">${STATIONS.map((p, i) => `<option value="s${i}">${p.name}</option>`).join("")}</optgroup>
+    <optgroup label="공원">${PARK_PLACES.map((p, i) => `<option value="p${i}">${esc(p.name)}</option>`).join("")}</optgroup>`;
+  const placeOf = v => v[0] === "s" ? STATIONS[+v.slice(1)] : PARK_PLACES[+v.slice(1)];
+  $("quick").innerHTML = `<option value="">출발지 빠른 선택 (역·공원)</option>${options}`;
+  $("destQuick").innerHTML = `<option value="">도착지 빠른 선택 (역·공원)</option>${options}`;
+  $("quick").onchange = e => { const v = e.target.value; if (!v) return;
+    const p = placeOf(v); e.target.value = ""; setPoint("start", p.at, p.name); };
+  $("destQuick").onchange = e => { const v = e.target.value; if (!v) return;
+    const p = placeOf(v); e.target.value = ""; setPoint("dest", p.at, p.name); };
+  $("locBtn").onclick = () => {
+    if (!navigator.geolocation) { toast("이 브라우저에서는 현재 위치를 쓸 수 없어요. 지도를 탭해 주세요"); return; }
+    $("locBtn").disabled = true;
+    navigator.geolocation.getCurrentPosition(
+      pos => { $("locBtn").disabled = false; setPoint("start", [pos.coords.latitude, pos.coords.longitude], "현재 위치"); },
+      () => { $("locBtn").disabled = false; toast("현재 위치를 가져오지 못했어요. 지도를 탭해 출발지를 골라 주세요"); },
+      { enableHighAccuracy: true, timeout: 8000 });
+  };
+  $("destPick").onclick = () => { pickMode = "dest"; syncPick(); document.getElementById("map").scrollIntoView({ behavior: "smooth", block: "center" }); };
+  $("destReset").onclick = () => { input.dest = input.start; pickMode = "start"; update(true); };
+  $("pickMode").onclick = e => { const b = e.target.closest("button"); if (!b) return; pickMode = b.dataset.v; syncPick(); };
+
+  $("pace").innerHTML = Object.entries(PACES).map(([k, p]) => `<button type="button" data-v="${k}">${p.label}<small>${p.kmh} km/h</small></button>`).join("");
+  $("difficulty").innerHTML = Object.entries(DIFFS).map(([k, d]) => `<button type="button" data-v="${k}">${d.label}</button>`).join("");
+  $("goal").innerHTML = Object.entries(GOALS).map(([k, g]) => `<button type="button" data-v="${k}">${g}</button>`).join("");
+  $("scenery").innerHTML = Object.entries(SCENERY).map(([k, s]) => `<button type="button" class="chip" data-v="${k}">${s}</button>`).join("");
+  for (const key of ["pace", "difficulty", "goal"]) {
+    $(key).onclick = e => { const b = e.target.closest("button"); if (!b) return; input[key] = b.dataset.v;
+      if (key === "pace") input.customOn = false; update(key !== "goal"); };
+  }
+  $("scenery").onclick = e => { const b = e.target.closest("button"); if (!b) return; const v = b.dataset.v;
+    input.scenery = input.scenery.includes(v) ? input.scenery.filter(x => x !== v) : [...input.scenery, v]; update(true); };
+  $("customOn").onchange = e => { input.customOn = e.target.checked; update(true); };
+  $("customPace").oninput = e => { const v = parseFloat(e.target.value); if (v >= 3 && v <= 20) { input.customPace = v; update(true, true); } };
+  $("weight").oninput = e => { const v = parseFloat(e.target.value); if (v >= 30 && v <= 150) { input.weight = v; update(false, true); } };
+  $("form").onsubmit = e => e.preventDefault();
+}
+
+function syncPick() {
+  for (const b of $("pickMode").children) b.setAttribute("aria-pressed", String(b.dataset.v === pickMode));
+  $("pickSay").textContent = pickMode === "dest" ? "지도를 탭하면 도착지가 바뀌어요" : "지도를 탭하면 출발지가 바뀌어요 (도착지도 같이)";
+}
+function syncForm() {
+  const same = samePlace();
+  $("startName").textContent = input.start.name;
+  $("destName").textContent = same ? input.start.name : input.dest.name;
+  $("destTag").textContent = same ? "출발지와 같음" : "";
+  $("destReset").disabled = same;
+  for (const key of ["pace", "difficulty", "goal"])
+    for (const b of $(key).children) b.setAttribute("aria-pressed", String(b.dataset.v === input[key] && !(key === "pace" && input.customOn)));
+  for (const b of $("scenery").children) b.setAttribute("aria-pressed", String(input.scenery.includes(b.dataset.v)));
+  $("customOn").checked = input.customOn;
+  $("customPace").disabled = !input.customOn;
+  if (document.activeElement !== $("customPace")) $("customPace").value = input.customPace;
+  if (document.activeElement !== $("weight")) $("weight").value = input.weight;
+  syncPick();
+}
+
+/* ================== 8. 추천 (경로 생성은 Engine, 숫자는 Calc) ================== */
+let timer;
+function update(recompute, debounce = false) {
+  store.set("input", input);
+  syncForm();
+  clearTimeout(timer);
+  if (!recompute) { results = results.map(withNumbers); renderResults(false); return; }
+  $("status").textContent = "코스 계산 중...";
+  timer = setTimeout(() => {
+    const kmh = Calc.speedKmh(input.pace, input.customOn ? input.customPace : 0);
+    const avoid = new Set();
+    results = DURATIONS.map(min => {
+      const c = Engine.plan(input.start.at, input.dest.at, Calc.distanceKm(kmh, min) * 1000,
+        { scenery: input.scenery, difficulty: input.difficulty }, avoid);
+      if (c.id) avoid.add(c.id);
+      return withNumbers({ min, c });
+    });
+    renderResults(true);
+  }, debounce ? 300 : 30);
+}
+function withNumbers(r) {
+  const kmh = Calc.speedKmh(input.pace, input.customOn ? input.customPace : 0);
+  const met = Calc.baseMet(input.pace, kmh, input.customOn) + DIFFS[input.difficulty].metAdd;
+  const c = r.c || {};
+  const km = c.m ? c.m / 1000 : 0;
+  return { ...r, kmh, met, target: Calc.distanceKm(kmh, r.min), km, estMin: km / kmh * 60,
+    kcal: Calc.kcal(met, input.weight, r.min), path: c.path, kmMarks: c.kmMarks || [],
+    cls: c.kind === "hill" ? "hill" : "flat", name: c.name || "코스를 만들 수 없음" };
+}
+
+function diffBadge(d) { return `<span class="badge ${d}">${DIFFS[d].label}</span>`; }
+const shownDiff = r => input.difficulty === "interval" ? "interval" : r.cls;
+
+function renderResults(fit) {
+  const r0 = results[0]; if (!r0) return;
+  $("target").innerHTML = `<span>속도 <b class="num">${r0.kmh.toFixed(1)} km/h</b> (${fmtPace(r0.kmh)})</span>
+    <span>MET <b class="num">${r0.met.toFixed(1)}</b></span><span>체중 <b class="num">${input.weight} kg</b></span>
+    <span class="status" id="status"></span>`;
+  $("cards").innerHTML = results.map((r, i) => {
+    const c = r.c;
+    const warn = c.error ? `<span class="badge warn">경로를 찾지 못했어요</span>`
+      : c.infeasible ? `<span class="badge warn">도착지까지 최소 ${fmtMin(r.estMin)}</span>`
+      : c.err > 0.1 ? `<span class="badge warn">목표와 ${fmtPct(c.err)} 차이</span>` : "";
+    return `<button type="button" class="card" data-i="${i}" aria-pressed="${i === selected}">
+      <div class="min">${r.min}<small>분</small></div>
+      <div class="ticks"><i style="width:${(r.min / 60) * 100}%"></i></div>
+      <div class="name">${esc(r.name)}</div>
+      <div class="stats"><span><b>${fmtKm(r.km)}</b></span><span><b>${fmtKcal(r.kcal)}</b></span></div>
+      <div class="tags">${diffBadge(shownDiff(r))}${c.park != null ? `<span class="badge park">공원 ${fmtPct(c.park)}</span>` : ""}${warn}</div>
+    </button>`; }).join("");
+  $("cards").onclick = e => { const b = e.target.closest(".card"); if (!b) return; selected = +b.dataset.i; renderResults(true); };
+  renderDetail(results[selected]);
+  drawRoute(fit);
+}
+
+function aiKey(r) { return [r.name, r.min, input.pace, input.difficulty, input.goal, Math.round(r.km * 10)].join("|"); }
+const KIND = { circle: "순환 루프", park: "공원 둘레 반복", detour: "도착지로 가는 우회 코스", out: "갔다가 돌아오는 왕복", hill: "언덕 반복", direct: "최단 경로" };
+
+function renderDetail(r) {
+  const c = r.c;
+  if (c.error) {
+    $("detail").innerHTML = `<div class="side"><p class="alert">이 조건으로는 걸을 수 있는 경로를 찾지 못했어요. 출발지를 큰 길이나 공원 근처로 옮겨 보세요.</p></div>`;
+    return;
+  }
+  const ivl = input.difficulty === "interval" ? Calc.intervalPlan(r.min) : null;
+  const t = TIPS[input.goal], ai = aiCache[aiKey(r)], d = shownDiff(r);
+  const same = samePlace();
+  $("detail").innerHTML = `
+    <div class="detail-head">
+      <div><h2>${esc(r.name)}</h2>
+        <div class="sub">${esc(input.start.name)} → ${esc(same ? "같은 곳으로 복귀" : input.dest.name)} · ${KIND[c.kind] || ""} ${diffBadge(d)}</div></div>
+      <div class="actions"><button type="button" class="btn primary" id="done" ${c.infeasible ? "disabled" : ""}>완료 기록하기</button></div>
+    </div>
+    ${c.infeasible ? `<p class="alert" style="margin:12px 18px 0">도착지까지 가장 짧은 길도 ${fmtKm(r.km)}라서 ${r.min}분 안에 도착하기 어려워요. 이 속도로 약 ${fmtMin(r.estMin)} 걸립니다. 지도에는 최단 경로를 표시했어요.</p>` : ""}
+    <div class="kpis">
+      <div class="kpi"><div class="k">운동 시간</div><div class="v">${fmtMin(r.min)}</div><div class="s">실거리 기준 ${fmtMin(r.estMin)}</div></div>
+      <div class="kpi"><div class="k">코스 거리</div><div class="v">${fmtKm(r.km)}</div><div class="s">목표 ${fmtKm(r.target)}</div></div>
+      <div class="kpi"><div class="k">예상 칼로리</div><div class="v kcal">${fmtKcal(r.kcal)}</div><div class="s">MET ${r.met.toFixed(1)}</div></div>
+      <div class="kpi"><div class="k">공원 구간</div><div class="v park">${fmtPct(c.park)}</div><div class="s">물가 ${fmtPct(c.water)}</div></div>
+      <div class="kpi"><div class="k">고도 상승</div><div class="v">${c.kind === "hill" ? `${c.elev} m` : "평지"}</div><div class="s">${c.kind === "hill" ? "추정치" : "송도 평지 구간"}</div></div>
+    </div>
+    <div class="detail-body">
+      <div class="side">
+        <div><h3>코스 정보</h3>
+          <dl class="facts" style="margin-top:6px">
+            <dt>형태</dt><dd>${KIND[c.kind] || "-"}${c.kind === "park" ? ` · 1바퀴 ${fmtKm(c.lapM / 1000)} × ${c.laps}` : ""}${c.kind === "hill" ? ` · ${c.reps}회` : ""}</dd>
+            <dt>지나는 공원</dt><dd>${c.parkNames.length ? c.parkNames.slice(0, 4).map(esc).join(", ") : "없음"}</dd>
+            <dt>목표 대비</dt><dd class="num">${c.m >= r.target * 1000 ? "+" : "−"}${fmtKm(Math.abs(r.km - r.target))} (${fmtPct(c.err ?? Math.abs(r.km - r.target) / r.target)})</dd>
+          </dl>
+          ${same && c.turn ? `<p class="hint" style="margin-top:8px">지도의 검은 마름모(반환)에서 같은 길로 돌아오세요.</p>` : ""}</div>
+        ${ivl ? `<div><h3>인터벌 구간표</h3>
+          <div class="ivl">${ivlBar(ivl)}</div>
+          <div class="legend"><span><i style="background:var(--line)"></i>워밍업/쿨다운</span><span><i style="background:var(--signal)"></i>빠르게 1분</span><span><i style="background:var(--accent-soft)"></i>천천히 2분</span></div>
+          <p class="hint" style="margin-top:4px">워밍업 ${fmtMin(ivl.warm)} → (빠르게 1분 + 천천히 2분) × ${ivl.sets}세트 → 쿨다운 ${fmtMin(ivl.cool)}</p></div>` : ""}
+      </div>
+      <div class="side">
+        <div id="tipbox">${ai ? aiHtml(ai) : `
+          <h3>${GOALS[input.goal]} 목표 운동 팁</h3>
+          <ul class="tips" style="margin-top:6px">${t.tips.map(x => `<li>${x}</li>`).join("")}<li>${DIFF_TIP[d]}</li></ul>
+          <p class="motto" style="margin-top:8px">${t.motto}</p>`}</div>
+        <div class="actions" id="aiActions" hidden>
+          <button type="button" class="btn" id="aiBtn">${ai ? "AI 설명 다시 받기" : "AI 코스 설명 받기"}</button>
+          <button type="button" class="btn" id="aiStop" hidden>중지</button>
+        </div>
+        <p class="src" id="aiNote"></p>
+      </div>
+    </div>`;
+  $("done").onclick = () => addRecord(r);
+  wireAi(r);
+}
+function ivlBar(p) {
+  const seg = (cls, m) => `<span class="${cls}" style="flex:${m}"></span>`;
+  let s = seg("w", p.warm);
+  for (let i = 0; i < p.sets; i++) s += seg("f", 1) + seg("e", 2);
+  return s + seg("w", p.cool);
+}
+
+/* ================== 9. LLM: 코스 설명 · 팁 · 동기부여 (숫자는 코드가 넣는다) ================== */
+let sampleFn = null, aiCtl = null;
+function aiHtml(a) {
+  return `<h3>AI 코스 설명</h3><div class="ai-out" style="margin-top:6px"><p>${esc(a.courseDescription)}</p>
+    <ul class="tips">${a.tips.map(x => `<li>${esc(x)}</li>`).join("")}</ul>
+    <p class="motto">${esc(a.motivation)}</p></div>`;
+}
+function wireAi(r) {
+  if (!sampleFn || r.c.infeasible) return;
+  $("aiActions").hidden = false;
+  $("aiBtn").onclick = () => askAi(r);
+  $("aiStop").onclick = () => aiCtl?.abort();
+}
+async function askAi(r) {
+  const c = r.c, key = aiKey(r);
+  const prompt = `당신은 친절한 러닝 코치입니다. 아래 수치는 앱이 이미 계산한 확정값입니다. 숫자를 새로 만들거나 바꾸지 말고, 필요하면 아래 숫자만 그대로 인용하세요.
+지역: 인천 송도동. 출발: ${input.start.name}, 도착: ${samePlace() ? "출발지로 복귀" : input.dest.name}
+코스: ${r.name} (${KIND[c.kind]}), 지나는 공원: ${c.parkNames.slice(0, 4).join(", ") || "없음"}, 공원 구간 ${fmtPct(c.park)}, 물가 구간 ${fmtPct(c.water)}
+운동: ${input.customOn ? fmtPace(r.kmh) : PACES[input.pace].label}, ${fmtMin(r.min)}, 코스 거리 ${fmtKm(r.km)}, 예상 칼로리 ${fmtKcal(r.kcal)}, 난이도 ${DIFFS[shownDiff(r)].label}
+사용자 목표: ${GOALS[input.goal]} (다이어트=꾸준한 속도와 칼로리, 기록=페이스 전략, 힐링=공원 풍경과 호흡)
+한국어로, JSON 하나만 답하세요: {"courseDescription": "코스 소개 2문장", "tips": ["팁1","팁2","팁3"], "motivation": "동기부여 한 문장"}`;
+  aiCtl = new AbortController();
+  $("aiBtn").disabled = true; $("aiStop").hidden = false; $("aiNote").textContent = "코스 설명을 쓰는 중...";
+  try {
+    const a = await sampleFn.json(prompt, { modelTier: "quick", signal: aiCtl.signal, cache: aiCache[key] ? false : true });
+    if (!a || typeof a.courseDescription !== "string" || !Array.isArray(a.tips)) throw { code: "invalid_json" };
+    aiCache[key] = { courseDescription: a.courseDescription, tips: a.tips.slice(0, 3).map(String), motivation: String(a.motivation || "") };
+    if (results[selected] && aiKey(results[selected]) === key) { renderDetail(results[selected]); $("aiNote").textContent = "AI가 쓴 문장입니다. 거리·칼로리는 앱 계산값이에요."; }
+  } catch (e) {
+    const msg = { cancelled: "", not_granted: "AI 사용이 허용되지 않아 기본 팁을 보여드려요.", sampling_disabled: "이 계정에서는 AI를 쓸 수 없어 기본 팁을 보여드려요.",
+      rate_limited: "요청이 많아요. 잠시 후 다시 눌러 주세요.", invalid_json: "답을 해석하지 못했어요. 다시 눌러 주세요." }[e?.code];
+    if (["not_granted", "sampling_disabled", "not_declared", "capability_disabled"].includes(e?.code)) sampleFn = null;
+    if ($("aiNote")) $("aiNote").textContent = msg ?? "AI 연결이 끊겼어요. 기본 팁은 그대로 쓸 수 있어요.";
+    if (!sampleFn && $("aiActions")) $("aiActions").hidden = true;
+  } finally {
+    if ($("aiBtn")) { $("aiBtn").disabled = false; $("aiStop").hidden = true; }
+  }
+}
+
+/* ================== 10. 기록 · 주간 차트 · 루틴 · 배지 ================== */
+const dayKey = d => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+const BADGES = [
+  { id: "first", ic: "01", t: "첫 발걸음", s: "첫 기록 저장", test: s => s.count >= 1 },
+  { id: "km10", ic: "10", t: "누적 10 km", s: "누적 거리 10 km", test: s => s.total >= 10 },
+  { id: "km50", ic: "50", t: "누적 50 km", s: "누적 거리 50 km", test: s => s.total >= 50 },
+  { id: "km100", ic: "100", t: "누적 100 km", s: "누적 거리 100 km", test: s => s.total >= 100 },
+  { id: "st3", ic: "3d", t: "3일 연속", s: "3일 연속 운동", test: s => s.streak >= 3 },
+  { id: "st7", ic: "7d", t: "7일 연속", s: "일주일 연속 운동", test: s => s.streak >= 7 },
+  { id: "st30", ic: "30d", t: "30일 연속", s: "한 달 연속 운동", test: s => s.streak >= 30 },
+  { id: "ivl", ic: "×n", t: "첫 인터벌", s: "인터벌 운동 완료", test: s => s.interval },
+  { id: "long", ic: "60′", t: "60분 완주", s: "60분 코스 완료", test: s => s.long },
+];
+function stats(recs) {
+  const days = new Set(recs.map(r => r.date));
+  let streak = 0; const d = new Date();
+  if (!days.has(dayKey(d))) d.setDate(d.getDate() - 1);   // 오늘 아직 안 뛰었으면 어제부터
+  while (days.has(dayKey(d))) { streak++; d.setDate(d.getDate() - 1); }
+  return { count: recs.length, total: recs.reduce((s, r) => s + r.km, 0), streak,
+           interval: recs.some(r => r.difficulty === "interval"), long: recs.some(r => r.min >= 60) };
+}
+function earned(recs) { const s = stats(recs); return BADGES.filter(b => b.test(s)).map(b => b.id); }
+
+function addRecord(r) {
+  const before = new Set(earned(records));
+  records = [...records, { id: Date.now(), date: dayKey(new Date()), courseName: r.name,
+    min: r.min, km: +r.km.toFixed(2), kcal: Math.round(r.kcal), difficulty: input.difficulty, pace: input.pace }];
+  store.set("records", records);
+  const fresh = BADGES.filter(b => earned(records).includes(b.id) && !before.has(b.id));
+  toast(fresh.length ? `새 배지: ${fresh.map(b => b.t).join(", ")}` : `${r.name} ${fmtKm(r.km)} 기록했어요`);
+  renderLog();
+}
+function removeRecord(id) { records = records.filter(r => r.id !== id); store.set("records", records); renderLog(); }
+
+function weekDays() {
+  const now = new Date(), mon = new Date(now);
+  mon.setDate(now.getDate() - ((now.getDay() + 6) % 7));
+  return Array.from({ length: 7 }, (_, i) => { const d = new Date(mon); d.setDate(mon.getDate() + i); return d; });
+}
+function renderLog() {
+  const keys = weekDays().map(dayKey);
+  const wk = records.filter(r => keys.includes(r.date));
+  const s = stats(records);
+  $("sum").innerHTML = `
+    <div><div class="k">이번 주 거리</div><div class="v">${fmtKm(wk.reduce((a, r) => a + r.km, 0))}</div></div>
+    <div><div class="k">이번 주 칼로리</div><div class="v">${fmtKcal(wk.reduce((a, r) => a + r.kcal, 0))}</div></div>
+    <div><div class="k">연속 운동</div><div class="v">${s.streak}일</div></div>`;
+  const per = keys.map(k => wk.filter(r => r.date === k).reduce((a, r) => a + r.km, 0));
+  const max = Math.max(5, Math.ceil(Math.max(...per)));
+  const W = 560, H = 200, Lp = 34, B = 26, T = 12, bw = (W - Lp - 10) / 7;
+  const y = v => T + (H - T - B) * (1 - v / max);
+  const names = ["월", "화", "수", "목", "금", "토", "일"], today = dayKey(new Date());
+  $("chart").innerHTML = `<svg viewBox="0 0 ${W} ${H}" role="img" aria-label="이번 주 요일별 거리">
+    ${[0, max / 2, max].map(v => `<line x1="${Lp}" x2="${W - 6}" y1="${y(v)}" y2="${y(v)}" stroke="var(--line)"/>
+      <text x="${Lp - 6}" y="${y(v) + 4}" text-anchor="end" font-size="11" fill="var(--muted)" font-family="IBM Plex Mono, monospace">${+v.toFixed(1)}</text>`).join("")}
+    ${per.map((v, i) => { const x = Lp + i * bw + bw * 0.2, w = bw * 0.6, h = (H - T - B) - (y(v) - T);
+      return `${v > 0 ? `<rect x="${x}" y="${y(v)}" width="${w}" height="${h}" rx="3" fill="${keys[i] === today ? "var(--signal)" : "var(--accent)"}"/>
+        <text x="${x + w / 2}" y="${y(v) - 5}" text-anchor="middle" font-size="11" fill="var(--ink)" font-family="IBM Plex Mono, monospace">${v.toFixed(1)}</text>` : ""}
+        <text x="${x + w / 2}" y="${H - 8}" text-anchor="middle" font-size="12" fill="${keys[i] === today ? "var(--ink)" : "var(--muted)"}" font-weight="${keys[i] === today ? 700 : 400}">${names[i]}</text>`; }).join("")}
+    <text x="4" y="${T + 4}" font-size="10" fill="var(--muted)">km</text>
+  </svg>`;
+  const recent = [...records].reverse().slice(0, 12);
+  $("logtable").innerHTML = recent.length ? `<table class="log"><thead><tr><th>날짜</th><th>코스</th><th style="text-align:right">시간</th><th style="text-align:right">거리</th><th style="text-align:right">칼로리</th><th></th></tr></thead><tbody>
+    ${recent.map(r => `<tr><td class="num">${r.date.slice(5)}</td><td>${esc(r.courseName)} ${r.difficulty === "interval" ? diffBadge("interval") : ""}</td>
+      <td class="n">${fmtMin(r.min)}</td><td class="n">${fmtKm(r.km)}</td><td class="n">${fmtKcal(r.kcal)}</td>
+      <td><button class="x" data-id="${r.id}" aria-label="기록 삭제">×</button></td></tr>`).join("")}</tbody></table>`
+    : `<div class="empty">아직 기록이 없어요. 코스 추천 탭에서 코스를 고르고 <b>완료 기록하기</b>를 누르면 여기에 쌓입니다.</div>`;
+  $("logtable").onclick = e => { const b = e.target.closest(".x"); if (b) removeRecord(+b.dataset.id); };
+  renderRoutine();
+  const got = new Set(earned(records));
+  $("badges").innerHTML = BADGES.map(b => `<div class="bdg ${got.has(b.id) ? "got" : ""}"><div class="ic">${b.ic}</div><div class="t">${b.t}</div><div class="s">${got.has(b.id) ? "달성" : b.s}</div></div>`).join("");
+}
+const ROUTINES = {
+  diet:    [[0, 40, "flat"], [2, 20, "interval"], [4, 40, "flat"], [6, 60, "flat"]],
+  record:  [[1, 20, "interval"], [3, 40, "flat"], [5, 60, "flat"]],
+  healing: [[0, 20, "flat"], [2, 40, "flat"], [5, 60, "flat"]],
+};
+function renderRoutine() {
+  const kmh = Calc.speedKmh(input.pace, input.customOn ? input.customPace : 0);
+  const plan = ROUTINES[input.goal];
+  $("routineHint").textContent = `${GOALS[input.goal]} 목표 · ${input.customOn ? fmtPace(kmh) : PACES[input.pace].label} 기준. 목표와 페이스는 코스 추천 탭에서 바꿀 수 있어요.`;
+  $("routine").innerHTML = ["월", "화", "수", "목", "금", "토", "일"].map((n, i) => {
+    const p = plan.find(x => x[0] === i);
+    return p ? `<div class="on"><span class="d">${n}</span><b>${fmtMin(p[1])}</b><span>${DIFFS[p[2]].label}</span><span class="num">${fmtKm(Calc.distanceKm(kmh, p[1]))}</span></div>`
+             : `<div><span class="d">${n}</span><span style="color:var(--muted)">휴식</span></div>`;
+  }).join("");
+}
+
+let toastT;
+function toast(msg) { const t = $("toast"); t.textContent = msg; t.hidden = false; clearTimeout(toastT); toastT = setTimeout(() => t.hidden = true, 2600); }
+
+/* ================== 11. 탭 · 시작 ================== */
+document.querySelector(".tabs").onclick = e => {
+  const b = e.target.closest("button"); if (!b) return;
+  for (const x of document.querySelectorAll(".tabs button")) x.setAttribute("aria-selected", String(x === b));
+  $("view-plan").hidden = b.dataset.tab !== "plan";
+  $("view-log").hidden = b.dataset.tab !== "log";
+  if (b.dataset.tab === "log") renderLog(); else map.invalidateSize();
+};
+$("target").innerHTML = `<span class="status" id="status"></span>`;
+buildForm();
+initMap();
+update(true);
+renderLog();
+
+// claude.ai에서 열면 AI 설명 버튼이 켜지고, 일반 호스팅에서는 기본 팁만 표시
+if (window.claude?.use) window.claude.use("sample").then(fn => {
+  sampleFn = fn;
+  if (fn && results[selected]) wireAi(results[selected]);
+}).catch(() => {});
+</script>
