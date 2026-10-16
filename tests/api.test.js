@@ -12,17 +12,25 @@ L._setRedis(async (cmd, ...a) => {
     case "DEL": return kv.delete(a[0]) ? 1 : 0;
     case "INCR": { const n = (+kv.get(a[0]) || 0) + 1; kv.set(a[0], String(n)); return n; }
     case "EXPIRE": return 1;
-    case "LRANGE": return (kv.get(a[0]) || []).slice();
+    case "LRANGE": { const l = kv.get(a[0]) || []; return l.slice(a[1], a[2] === -1 ? undefined : a[2] + 1); }
+    case "EXISTS": return kv.has(a[0]) ? 1 : 0;
+    case "SADD": { const t = kv.get(a[0]) || new Set(); const n = t.has(a[1]) ? 0 : 1; t.add(a[1]); kv.set(a[0], t); return n; }
+    case "SREM": { const t = kv.get(a[0]); return t && t.delete(a[1]) ? 1 : 0; }
+    case "SISMEMBER": return kv.get(a[0])?.has(a[1]) ? 1 : 0;
+    case "SCARD": return kv.get(a[0])?.size || 0;
+    case "SMEMBERS": return [...(kv.get(a[0]) || [])];
+    case "LPUSH": { const l = kv.get(a[0]) || []; l.unshift(a[1]); kv.set(a[0], l); return l.length; }
+    case "LTRIM": { const l = kv.get(a[0]) || []; kv.set(a[0], l.slice(a[1], a[2] + 1)); return "OK"; }
     case "LLEN": return (kv.get(a[0]) || []).length;
     case "RPUSH": { const l = kv.get(a[0]) || []; l.push(...a.slice(1)); kv.set(a[0], l); return l.length; }
-    case "LREM": { const l = kv.get(a[0]) || []; const i = l.indexOf(a[2]); if (i >= 0) l.splice(i, 1); return i >= 0 ? 1 : 0; }
+    case "LREM": { const l = kv.get(a[0]) || []; let n = 0; for (let i = 0; i < l.length;) { if (l[i] === a[2] && (a[1] === 0 || n < a[1])) { l.splice(i, 1); n++; } else i++; } return n; }
   }
   throw new Error("unsupported " + cmd);
 });
 
 const routes = {
   signup: require("../api/auth/signup"), login: require("../api/auth/login"),
-  logout: require("../api/auth/logout"), me: require("../api/me"), workouts: require("../api/workouts"),
+  logout: require("../api/auth/logout"), feed: require("../api/feed"), comments: require("../api/comments"), me: require("../api/me"), workouts: require("../api/workouts"),
 };
 let ipSeq = 0;
 async function call(route, method, { body, cookie, query, ip } = {}) {
@@ -97,4 +105,41 @@ test("로그인 없이·위조 쿠키·JSON 아닌 요청은 거절", async () =
 test("로그아웃은 쿠키 만료", async () => {
   const o = await call("logout", "POST", {});
   assert.match(o.headers["set-cookie"], /Max-Age=0/);
+});
+
+test("커뮤니티: 공유 → 피드 → 좋아요·댓글 → 공유 해제", async () => {
+  const a = await call("signup", "POST", { body: { nickname: "러너A", password: "1234" } });
+  const b = await call("signup", "POST", { body: { nickname: "러너B", password: "1234" } });
+  const w = await call("workouts", "POST", { cookie: a.cookie, body: { date: "2026-10-16", courseName: "해돋이 공원", min: 40, km: 5.1, kcal: 300 } });
+  const id = w.json.workouts[0].id;
+
+  assert.equal((await call("feed", "GET", {})).status, 401, "로그인 없이는 피드 못 봄");
+  assert.equal((await call("feed", "GET", { cookie: b.cookie })).json.posts.length, 0);
+
+  assert.equal((await call("workouts", "PATCH", { cookie: b.cookie, query: { id }, body: { shared: true } })).status, 404, "남의 기록은 공유 불가");
+  await call("workouts", "PATCH", { cookie: a.cookie, query: { id }, body: { shared: true } });
+  await call("workouts", "PATCH", { cookie: a.cookie, query: { id }, body: { shared: true } });   // 중복 공유해도 한 번만
+  assert.equal((await call("workouts", "GET", { cookie: a.cookie })).json.workouts[0].shared, true);
+
+  const feed = await call("feed", "GET", { cookie: b.cookie });
+  assert.equal(feed.json.posts.length, 1);
+  assert.equal(feed.json.posts[0].nickname, "러너A");
+  assert.ok(!("uid" in feed.json.posts[0]));
+
+  const like = await call("feed", "POST", { cookie: b.cookie, body: { id } });
+  assert.deepEqual([like.json.liked, like.json.likes], [true, 1]);
+  assert.equal((await call("feed", "POST", { cookie: b.cookie, body: { id } })).json.likes, 0, "다시 누르면 취소");
+
+  const c = await call("comments", "POST", { cookie: b.cookie, body: { id, text: "  화이팅!  " } });
+  assert.equal(c.json.comment.text, "화이팅!");
+  assert.equal((await call("comments", "POST", { cookie: b.cookie, body: { id, text: "" } })).status, 400);
+  assert.equal((await call("feed", "GET", { cookie: a.cookie })).json.posts[0].comments, 1);
+  const cid = c.json.comment.id;
+  const third = await call("signup", "POST", { body: { nickname: "러너C", password: "1234" } });
+  assert.equal((await call("comments", "DELETE", { cookie: third.cookie, query: { id, cid } })).status, 403);
+  assert.equal((await call("comments", "DELETE", { cookie: a.cookie, query: { id, cid } })).status, 200, "게시물 주인은 댓글 삭제 가능");
+
+  await call("workouts", "PATCH", { cookie: a.cookie, query: { id }, body: { shared: false } });
+  assert.equal((await call("feed", "GET", { cookie: b.cookie })).json.posts.length, 0);
+  assert.equal((await call("comments", "GET", { cookie: b.cookie, query: { id } })).status, 404);
 });

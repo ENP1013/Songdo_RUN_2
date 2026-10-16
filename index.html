@@ -200,6 +200,20 @@ table.log{width:100%;border-collapse:collapse;font-size:13.5px}
 table.log th{text-align:left;font-size:11.5px;color:var(--muted);font-weight:600;letter-spacing:.05em;padding:6px 6px;border-bottom:1px solid var(--line)}
 table.log td{padding:7px 6px;border-bottom:1px solid var(--line);vertical-align:top}
 table.log td.n{font-family:var(--f-num);text-align:right;white-space:nowrap}
+.sharebtn{border:1px solid var(--line);background:transparent;color:var(--muted);border-radius:999px;cursor:pointer;font-size:12px;padding:2px 9px;white-space:nowrap}
+.sharebtn[aria-pressed="true"]{background:var(--accent-soft);color:var(--accent);border-color:var(--accent)}
+.feed{display:flex;flex-direction:column;gap:12px;max-width:640px;margin:0 auto;width:100%}
+.post{background:var(--surface);border:1px solid var(--line);border-radius:var(--r);padding:14px 16px;display:flex;flex-direction:column;gap:8px}
+.post .who{display:flex;justify-content:space-between;gap:8px;font-size:13px;color:var(--muted)}
+.post .who b{color:var(--ink)}
+.post .course{font-family:var(--f-display);font-weight:700;font-size:16px}
+.post .stats{display:flex;gap:18px;font-family:var(--f-num);font-size:14px}
+.post .acts{display:flex;gap:8px}
+.post .acts button{border:0;background:transparent;color:var(--muted);cursor:pointer;padding:4px 8px;border-radius:999px}
+.post .acts button[aria-pressed="true"]{color:var(--signal);font-weight:700}
+.cmts{border-top:1px solid var(--line);padding-top:8px;display:flex;flex-direction:column;gap:6px;font-size:14px}
+.cmts form{display:flex;gap:6px}
+.cmts input{flex:1;min-width:0;border:1px solid var(--line);background:var(--bg);border-radius:8px;padding:6px 10px}
 .x{border:0;background:transparent;color:var(--muted);cursor:pointer;font-size:16px;padding:0 4px}
 .tablewrap{overflow-x:auto}
 .routine{display:grid;grid-template-columns:repeat(7,minmax(0,1fr));gap:4px}
@@ -329,6 +343,7 @@ body.running{overflow:hidden}
       <nav class="tabs" role="tablist">
         <button role="tab" id="tab-plan" aria-selected="true" data-tab="plan">코스 추천</button>
         <button role="tab" id="tab-log" aria-selected="false" data-tab="log">기록 · 배지</button>
+        <button role="tab" id="tab-feed" aria-selected="false" data-tab="feed" hidden>커뮤니티</button>
       </nav>
       <button type="button" class="acct" id="acctBtn" hidden>로그인</button>
     </div>
@@ -429,6 +444,11 @@ body.running{overflow:hidden}
         <div class="badges" id="badges"></div>
       </div>
     </div>
+  </section>
+
+  <!-- 커뮤니티 -->
+  <section id="view-feed" hidden>
+    <div class="feed" id="feed"></div>
   </section>
 </div>
 <div class="toast" id="toast" hidden></div>
@@ -1399,6 +1419,66 @@ async function removeRecord(id) {
   renderLog();
 }
 
+async function toggleShare(id) {
+  const r = records.find(x => String(x.id) === id); if (!r) return;
+  const next = !r.shared;
+  try { await Account.api("PATCH", `/api/workouts?id=${encodeURIComponent(id)}`, { shared: next }); }
+  catch (e) { toast(e.message || "공유를 바꾸지 못했어요"); return; }
+  r.shared = next; renderLog();
+  toast(next ? "커뮤니티에 공유했어요" : "공유를 해제했어요");
+}
+
+/* ================== 커뮤니티 피드 ================== */
+const Feed = {
+  posts: [], next: 0, loading: false, open: new Set(), cmts: {},
+  async load(more) {
+    if (this.loading) return; this.loading = true;
+    try {
+      const j = await Account.api("GET", `/api/feed?offset=${more ? this.next : 0}`);
+      this.posts = more ? [...this.posts, ...j.posts] : j.posts; this.next = j.next;
+    } catch (e) { toast(e.message || "피드를 불러오지 못했어요"); }
+    this.loading = false; this.render();
+  },
+  render() {
+    const ago = d => { const m = Math.floor((Date.now() - new Date(d)) / 6e4); return m < 1 ? "방금" : m < 60 ? `${m}분 전` : m < 1440 ? `${Math.floor(m / 60)}시간 전` : `${Math.floor(m / 1440)}일 전`; };
+    $("feed").innerHTML = (this.posts.length ? this.posts.map(p => `<article class="post" data-id="${p.id}">
+      <div class="who"><span><b>${esc(p.nickname)}</b>${p.mine ? " (나)" : ""}</span><span>${p.date.slice(5)}</span></div>
+      <div class="course">${esc(p.courseName)} ${p.difficulty === "interval" ? diffBadge("interval") : ""}</div>
+      <div class="stats"><span>${fmtMin(p.min)}</span><span>${fmtKm(p.km)}</span><span>${fmtKcal(p.kcal)}</span></div>
+      <div class="acts"><button data-like aria-pressed="${p.liked}">${p.liked ? "♥" : "♡"} ${p.likes}</button><button data-cmt>댓글 ${p.comments}</button></div>
+      ${this.open.has(p.id) ? `<div class="cmts">${(this.cmts[p.id] || []).map(c => `<div><b>${esc(c.nickname)}</b> ${esc(c.text)} <span style="color:var(--muted);font-size:12px">${ago(c.at)}</span>${c.mine || p.mine ? ` <button class="x" data-del="${c.id}" aria-label="댓글 삭제">×</button>` : ""}</div>`).join("") || `<span style="color:var(--muted)">첫 댓글을 남겨 보세요</span>`}
+        <form data-form><input maxlength="200" placeholder="응원 한마디" aria-label="댓글"><button class="btn" type="submit">등록</button></form></div>` : ""}
+    </article>`).join("") : `<div class="empty">아직 공유된 기록이 없어요. 기록 · 배지 탭에서 내 기록의 <b>공유</b>를 눌러 첫 글을 올려 보세요.</div>`)
+      + (this.next != null ? `<button class="btn" id="feedMore">더 보기</button>` : "");
+  },
+  async comments(id) { try { this.cmts[id] = (await Account.api("GET", `/api/comments?id=${id}`)).comments; } catch (e) { toast(e.message); } },
+  wire() {
+    $("feed").onclick = async e => {
+      if (e.target.id === "feedMore") return this.load(true);
+      const el = e.target.closest("article"); if (!el) return;
+      const id = el.dataset.id, p = this.posts.find(x => x.id === id);
+      if (e.target.closest("[data-like]")) {
+        try { const j = await Account.api("POST", "/api/feed", { id }); p.liked = j.liked; p.likes = j.likes; } catch (er) { toast(er.message); }
+      } else if (e.target.closest("[data-cmt]")) {
+        if (this.open.has(id)) this.open.delete(id); else { this.open.add(id); await this.comments(id); }
+      } else if (e.target.closest("[data-del]")) {
+        try { await Account.api("DELETE", `/api/comments?id=${id}&cid=${e.target.closest("[data-del]").dataset.del}`, {}); await this.comments(id); p.comments = this.cmts[id].length; } catch (er) { toast(er.message); }
+      } else return;
+      this.render();
+    };
+    $("feed").onsubmit = async e => {
+      e.preventDefault();
+      const el = e.target.closest("article"), id = el.dataset.id, text = e.target.querySelector("input").value.trim();
+      if (!text) return;
+      try {
+        await Account.api("POST", "/api/comments", { id, text });
+        await this.comments(id); this.posts.find(x => x.id === id).comments = this.cmts[id].length;
+      } catch (er) { toast(er.message); return; }
+      this.render();
+    };
+  },
+};
+
 function weekDays() {
   const now = new Date(), mon = new Date(now);
   mon.setDate(now.getDate() - ((now.getDay() + 6) % 7));
@@ -1429,12 +1509,16 @@ function renderLog() {
     <text x="4" y="${T + 4}" font-size="10" fill="var(--muted)">km</text>
   </svg>`;
   const recent = [...records].reverse().slice(0, 12);
-  $("logtable").innerHTML = recent.length ? `<table class="log"><thead><tr><th>날짜</th><th>코스</th><th style="text-align:right">시간</th><th style="text-align:right">거리</th><th style="text-align:right">칼로리</th><th></th></tr></thead><tbody>
+  $("logtable").innerHTML = recent.length ? `<table class="log"><thead><tr><th>날짜</th><th>코스</th><th style="text-align:right">시간</th><th style="text-align:right">거리</th><th style="text-align:right">칼로리</th>${Account.user ? "<th></th>" : ""}<th></th></tr></thead><tbody>
     ${recent.map(r => `<tr><td class="num">${r.date.slice(5)}</td><td>${esc(r.courseName)} ${r.difficulty === "interval" ? diffBadge("interval") : ""}</td>
       <td class="n">${fmtMin(r.min)}</td><td class="n">${fmtKm(r.km)}</td><td class="n">${fmtKcal(r.kcal)}</td>
+      ${Account.user ? `<td><button class="sharebtn" data-share="${r.id}" aria-pressed="${!!r.shared}">${r.shared ? "공유 중" : "공유"}</button></td>` : ""}
       <td><button class="x" data-id="${r.id}" aria-label="기록 삭제">×</button></td></tr>`).join("")}</tbody></table>`
     : `<div class="empty">아직 기록이 없어요. 코스 추천 탭에서 코스를 고르고 <b>완료 기록하기</b>를 누르면 여기에 쌓입니다.</div>`;
-  $("logtable").onclick = e => { const b = e.target.closest(".x"); if (b) removeRecord(b.dataset.id); };
+  $("logtable").onclick = e => {
+    const b = e.target.closest(".x"); if (b) return removeRecord(b.dataset.id);
+    const sh = e.target.closest(".sharebtn"); if (sh) toggleShare(sh.dataset.share);
+  };
   renderRoutine();
   const got = new Set(earned(records));
   $("badges").innerHTML = BADGES.map(b => `<div class="bdg ${got.has(b.id) ? "got" : ""}"><div class="ic">${b.ic}</div><div class="t">${b.t}</div><div class="s">${got.has(b.id) ? "달성" : b.s}</div></div>`).join("");
@@ -1773,6 +1857,8 @@ const Account = {
     b.hidden = !this.available;
     b.textContent = this.user ? `${this.user.nickname} 님` : "로그인";
     b.classList.toggle("on", !!this.user);
+    $("tab-feed").hidden = !this.user;
+    if (!this.user && !$("view-feed").hidden) $("tab-log").click();
     $("authOut").hidden = !!this.user; $("authIn").hidden = !this.user;
     $("authTitle").textContent = this.user ? "내 계정" : this.mode === "signup" ? "가입" : "로그인";
     if (this.user) $("authWho").textContent = this.user.nickname;
@@ -1835,7 +1921,8 @@ document.querySelector(".tabs").onclick = e => {
   for (const x of document.querySelectorAll(".tabs button")) x.setAttribute("aria-selected", String(x === b));
   $("view-plan").hidden = b.dataset.tab !== "plan";
   $("view-log").hidden = b.dataset.tab !== "log";
-  if (b.dataset.tab === "log") renderLog(); else map.invalidateSize();
+  $("view-feed").hidden = b.dataset.tab !== "feed";
+  if (b.dataset.tab === "log") renderLog(); else if (b.dataset.tab === "feed") Feed.load(); else map.invalidateSize();
   syncStartbar();
 };
 $("target").innerHTML = `<span class="status" id="status"></span>`;
@@ -1843,6 +1930,7 @@ buildForm();
 initMap();
 update(true);
 Account.wire();
+Feed.wire();
 Account.render();
 renderLog();
 Run.wire();

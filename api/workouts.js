@@ -23,7 +23,17 @@ function clean(w) {
   };
 }
 const listKey = u => `workouts:${u.id}`;
-async function list(user) { return ((await L.redis("LRANGE", listKey(user), 0, -1)) || []).map(s => JSON.parse(s)); }
+async function list(user) {
+  const [rows, shared] = await L.pipeline([["LRANGE", listKey(user), 0, -1], ["SMEMBERS", `shared:${user.id}`]]);
+  const set = new Set(shared || []);
+  return (rows || []).map(s => { const w = JSON.parse(s); w.shared = set.has(w.id); return w; });
+}
+
+// 커뮤니티 피드에서 내리기 (게시물·좋아요·댓글 삭제)
+async function unshare(user, id) {
+  await L.pipeline([["DEL", `post:${id}`], ["DEL", `likes:${id}`], ["DEL", `comments:${id}`],
+    ["LREM", "feed", 0, id], ["SREM", `shared:${user.id}`, id]]);
+}
 
 module.exports = L.handler({
   async GET(req, res) {
@@ -41,6 +51,23 @@ module.exports = L.handler({
     await L.redis("RPUSH", listKey(user), ...rows.map(r => JSON.stringify(r)));
     res.status(201).json({ workouts: rows });
   },
+  // PATCH /api/workouts?id=...  { shared: true|false } → 커뮤니티에 공유/공유 해제
+  async PATCH(req, res, body) {
+    const user = await L.requireUser(req);
+    await L.rateLimit(`wshare:${user.id}`, 60, 600);
+    const id = String(req.query?.id || new URL(req.url, "http://x").searchParams.get("id") || "");
+    const all = await L.redis("LRANGE", listKey(user), 0, -1) || [];
+    const w = all.map(s => JSON.parse(s)).find(x => x.id === id);
+    if (!w) throw new L.HttpError(404, "기록을 찾지 못했어요");
+    if (body.shared) {
+      const post = { id, uid: user.id, nickname: user.nickname, date: w.date, courseName: w.courseName,
+        min: w.min, km: w.km, kcal: w.kcal, difficulty: w.difficulty, pace: w.pace, sharedAt: new Date().toISOString() };
+      if (await L.redis("SADD", `shared:${user.id}`, id)) {   // 이미 공유 중이면 피드에 중복으로 올리지 않음
+        await L.pipeline([["SET", `post:${id}`, JSON.stringify(post)], ["LPUSH", "feed", id], ["LTRIM", "feed", 0, 999]]);
+      }
+    } else await unshare(user, id);
+    res.status(200).json({ ok: true, shared: !!body.shared });
+  },
   async DELETE(req, res) {
     const user = await L.requireUser(req);
     const id = String(req.query?.id || new URL(req.url, "http://x").searchParams.get("id") || "");
@@ -48,6 +75,7 @@ module.exports = L.handler({
     const hit = all.find(s => JSON.parse(s).id === id);
     if (!hit) throw new L.HttpError(404, "기록을 찾지 못했어요");
     await L.redis("LREM", listKey(user), 1, hit);
+    await unshare(user, id);
     res.status(200).json({ ok: true });
   },
 });

@@ -19,6 +19,18 @@ let redisImpl = async (...cmd) => {
   return j.result;
 };
 const redis = (...cmd) => redisImpl(...cmd);
+// 여러 명령을 한 번의 요청으로 (Upstash /pipeline). 결과는 명령 순서대로의 값 배열
+let pipelineImpl = async cmds => {
+  if (!REDIS_URL || !REDIS_TOKEN) throw new HttpError(503, "기록 저장소가 아직 연결되지 않았어요");
+  const r = await fetch(REDIS_URL.replace(/\/$/, "") + "/pipeline", {
+    method: "POST",
+    headers: { Authorization: `Bearer ${REDIS_TOKEN}`, "Content-Type": "application/json" },
+    body: JSON.stringify(cmds),
+  });
+  const j = await r.json();
+  return j.map(x => { if (x.error) throw new Error(x.error); return x.result; });
+};
+const pipeline = cmds => cmds.length ? pipelineImpl(cmds) : Promise.resolve([]);
 
 /* ---------- 비밀번호 (scrypt) ---------- */
 function hashPassword(pw, salt = crypto.randomBytes(16).toString("hex")) {
@@ -94,7 +106,7 @@ function handler(methods) {
 }
 
 module.exports = {
-  redis, HttpError, hashPassword, checkPassword, setSession, clearSession, readSession, requireUser,
+  redis, pipeline, HttpError, hashPassword, checkPassword, setSession, clearSession, readSession, requireUser,
   nickKey, validNick, validWeight, publicUser, clientIp, rateLimit, handler,
-  _setRedis: fn => { redisImpl = fn; },   // 테스트용
+  _setRedis: (fn, pipe) => { redisImpl = fn; pipelineImpl = pipe || (cmds => Promise.all(cmds.map(c => fn(...c)))); },   // 테스트용
 };
