@@ -59,7 +59,7 @@ header.top p{margin:4px 0 0;color:var(--muted);max-width:62ch}
 @media (min-width:861px){.panel.sticky{position:sticky;top:calc(env(safe-area-inset-top,0px) + 12px)}}
 .field{display:flex;flex-direction:column;gap:6px}
 .label{font-size:12px;font-weight:600;letter-spacing:.06em;color:var(--muted)}
-select,input[type=number],input[type=text]{background:var(--bg);border:1px solid var(--line);border-radius:8px;padding:9px 10px;width:100%}
+select,textarea,input[type=number],input[type=text]{background:var(--bg);border:1px solid var(--line);border-radius:8px;padding:9px 10px;width:100%}
 .seg{display:grid;grid-auto-flow:column;grid-auto-columns:1fr;gap:4px;background:var(--sunk);padding:4px;border-radius:9px}
 .seg button{border:0;background:transparent;padding:8px 4px;border-radius:6px;cursor:pointer;font-weight:600;font-size:14px;color:var(--muted);min-width:0}
 .seg button small{display:block;font-family:var(--f-num);font-weight:500;font-size:11px;opacity:.85}
@@ -206,6 +206,9 @@ table.log td.n{font-family:var(--f-num);text-align:right;white-space:nowrap}
 .post{background:var(--surface);border:1px solid var(--line);border-radius:var(--r);padding:14px 16px;display:flex;flex-direction:column;gap:8px}
 .post .who{display:flex;justify-content:space-between;gap:8px;font-size:13px;color:var(--muted)}
 .post .who b{color:var(--ink)}
+.post .content{margin:0;white-space:pre-wrap;overflow-wrap:anywhere;font-size:14.5px}
+#shareForm textarea{resize:vertical;min-height:110px;font:inherit}
+#shareForm .cnt{align-self:flex-end;font-size:12px;color:var(--muted)}
 .post .course{font-family:var(--f-display);font-weight:700;font-size:16px}
 .post .stats{display:flex;gap:18px;font-family:var(--f-num);font-size:14px}
 .post .acts{display:flex;gap:8px}
@@ -252,9 +255,9 @@ table.log td.n{font-family:var(--f-num);text-align:right;white-space:nowrap}
 .topbar{display:flex;gap:8px;align-items:center;flex-wrap:wrap}
 .acct{border:1px solid var(--line);background:var(--surface);border-radius:999px;padding:7px 14px;font-weight:600;cursor:pointer;max-width:200px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .acct.on{border-color:var(--accent);color:var(--accent)}
-dialog#authDlg{border:1px solid var(--line);border-radius:var(--r);background:var(--surface);color:var(--ink);padding:0;width:min(380px,calc(100vw - 32px))}
-dialog#authDlg::backdrop{background:rgba(0,0,0,.35)}
-#authForm{padding:18px;display:flex;flex-direction:column;gap:14px}
+dialog#authDlg,dialog#shareDlg{border:1px solid var(--line);border-radius:var(--r);background:var(--surface);color:var(--ink);padding:0;width:min(380px,calc(100vw - 32px))}
+dialog#authDlg::backdrop,dialog#shareDlg::backdrop{background:rgba(0,0,0,.35)}
+#authForm,#shareForm{padding:18px;display:flex;flex-direction:column;gap:14px}
 #authOut,#authIn{display:flex;flex-direction:column;gap:14px}
 .dlg-head{display:flex;justify-content:space-between;align-items:center}
 .dlg-head h2{font-size:19px}
@@ -551,6 +554,17 @@ body.running{overflow:hidden}
       </div>
       <button type="button" class="btn" id="logoutBtn">로그아웃</button>
     </div>
+  </form>
+</dialog>
+<dialog id="shareDlg" aria-labelledby="shareTitle">
+  <form id="shareForm" method="dialog" novalidate>
+    <div class="dlg-head"><h2 id="shareTitle">커뮤니티에 공유</h2><button type="button" class="x" id="shareClose" aria-label="닫기">×</button></div>
+    <p class="hint" id="shareCourse" style="margin:0"></p>
+    <div class="field"><label class="label" for="shareText">게시물 내용 (선택)</label>
+      <textarea id="shareText" maxlength="500" placeholder="오늘 운동은 어땠나요? 코스 후기나 한마디를 남겨 보세요"></textarea>
+      <span class="cnt" id="shareCnt">0/500</span></div>
+    <p class="alert" id="shareErr" hidden></p>
+    <button type="submit" class="btn primary" id="shareSubmit">공유하기</button>
   </form>
 </dialog>
 
@@ -1452,13 +1466,26 @@ async function removeRecord(id) {
   renderLog();
 }
 
-async function toggleShare(id) {
+// 공유할 때는 게시물 내용을 쓰는 창을 먼저 띄우고(비워도 됨), 공유 해제는 바로 처리
+function openShareDlg({ id, mode, summary, text = "" }) {   // mode: "new"(공유) | "edit"(게시물 수정)
+  $("shareTitle").textContent = mode === "edit" ? "게시물 수정" : "커뮤니티에 공유";
+  $("shareSubmit").textContent = mode === "edit" ? "수정하기" : "공유하기";
+  $("shareCourse").textContent = summary;
+  $("shareText").value = text; $("shareCnt").textContent = `${text.length}/500`; $("shareErr").hidden = true;
+  $("shareDlg").dataset.id = id; $("shareDlg").dataset.mode = mode; $("shareDlg").showModal(); $("shareText").focus();
+}
+function toggleShare(id) {
   const r = records.find(x => String(x.id) === id); if (!r) return;
-  const next = !r.shared;
-  try { await Account.api("PATCH", `/api/workouts?id=${encodeURIComponent(id)}`, { shared: next }); }
-  catch (e) { toast(e.message || "공유를 바꾸지 못했어요"); return; }
+  if (!r.shared) openShareDlg({ id, mode: "new", summary: `${r.courseName} · ${fmtKm(r.km)} · ${fmtMin(r.min)}` });
+  else doShare(id, false);
+}
+async function doShare(id, next, content) {
+  const r = records.find(x => String(x.id) === id); if (!r) return;
+  try { await Account.api("PATCH", `/api/workouts?id=${encodeURIComponent(id)}`, { shared: next, content }); }
+  catch (e) { if (next) { $("shareErr").textContent = e.message || "공유하지 못했어요"; $("shareErr").hidden = false; } else toast(e.message || "공유를 바꾸지 못했어요"); return false; }
   r.shared = next; renderLog();
   toast(next ? "커뮤니티에 공유했어요" : "공유를 해제했어요");
+  return true;
 }
 
 /* ================== 커뮤니티 피드 ================== */
@@ -1475,8 +1502,9 @@ const Feed = {
   render() {
     const ago = d => { const m = Math.floor((Date.now() - new Date(d)) / 6e4); return m < 1 ? "방금" : m < 60 ? `${m}분 전` : m < 1440 ? `${Math.floor(m / 60)}시간 전` : `${Math.floor(m / 1440)}일 전`; };
     $("feed").innerHTML = (this.posts.length ? this.posts.map(p => `<article class="post" data-id="${p.id}">
-      <div class="who"><span><b>${esc(p.nickname)}</b>${p.mine ? " (나)" : ""}</span><span>${p.date.slice(5)}</span></div>
+      <div class="who"><span><b>${esc(p.nickname)}</b>${p.mine ? " (나)" : ""}</span><span>${p.mine ? `<button class="sharebtn" data-edit>수정</button> ` : ""}${p.date.slice(5)}</span></div>
       <div class="course">${esc(p.courseName)} ${p.difficulty === "interval" ? diffBadge("interval") : ""}</div>
+      ${p.content ? `<p class="content">${esc(p.content)}</p>` : ""}
       <div class="stats"><span>${fmtMin(p.min)}</span><span>${fmtKm(p.km)}</span><span>${fmtKcal(p.kcal)}</span></div>
       <div class="acts"><button data-like aria-pressed="${p.liked}">${p.liked ? "♥" : "♡"} ${p.likes}</button><button data-cmt>댓글 ${p.comments}</button></div>
       ${this.open.has(p.id) ? `<div class="cmts">${this.threads(p, ago) || `<span style="color:var(--muted)">첫 댓글을 남겨 보세요</span>`}
@@ -1495,12 +1523,20 @@ const Feed = {
   },
   // 좋아요·댓글·답글은 로그인 필요: 안 했으면 로그인 창을 연다
   needLogin() { if (Account.user) return false; toast("로그인하면 이용할 수 있어요"); Account.openLogin(); return true; },
+  // 내 게시물 내용 수정
+  async edit(id, content) {
+    try { await Account.api("PATCH", `/api/workouts?id=${encodeURIComponent(id)}`, { shared: true, content }); }
+    catch (e) { $("shareErr").textContent = e.message || "수정하지 못했어요"; $("shareErr").hidden = false; return false; }
+    const p = this.posts.find(x => x.id === id); if (p) p.content = content;
+    this.render(); toast("게시물을 수정했어요"); return true;
+  },
   async comments(id) { try { this.cmts[id] = (await Account.api("GET", `/api/comments?id=${id}`)).comments; } catch (e) { toast(e.message); } },
   wire() {
     $("feed").onclick = async e => {
       if (e.target.id === "feedMore") return this.load(true);
       const el = e.target.closest("article"); if (!el) return;
       const id = el.dataset.id, p = this.posts.find(x => x.id === id);
+      if (e.target.closest("[data-edit]")) return openShareDlg({ id, mode: "edit", text: p.content || "", summary: `${p.courseName} · ${fmtKm(p.km)} · ${fmtMin(p.min)}` });
       if (e.target.closest("[data-like],[data-clike],[data-reply]") && this.needLogin()) return;
       if (e.target.closest("[data-like]")) {
         try { const j = await Account.api("POST", "/api/feed", { id }); p.liked = j.liked; p.likes = j.likes; } catch (er) { toast(er.message); }
@@ -2018,6 +2054,16 @@ update(true);
 Account.wire();
 Feed.wire();
 Rank.wire();
+$("shareClose").onclick = () => $("shareDlg").close();
+$("shareText").oninput = () => { $("shareCnt").textContent = `${$("shareText").value.length}/500`; };
+$("shareForm").onsubmit = async e => {
+  e.preventDefault();
+  $("shareSubmit").disabled = true;
+  const { id, mode } = $("shareDlg").dataset, text = $("shareText").value.trim();
+  const ok = mode === "edit" ? await Feed.edit(id, text) : await doShare(id, true, text);
+  $("shareSubmit").disabled = false;
+  if (ok) $("shareDlg").close();
+};
 Account.render();
 renderLog();
 Run.wire();
