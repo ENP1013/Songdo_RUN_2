@@ -17,6 +17,10 @@ L._setRedis(async (cmd, ...a) => {
     case "SADD": { const t = kv.get(a[0]) || new Set(); const n = t.has(a[1]) ? 0 : 1; t.add(a[1]); kv.set(a[0], t); return n; }
     case "SREM": { const t = kv.get(a[0]); return t && t.delete(a[1]) ? 1 : 0; }
     case "SISMEMBER": return kv.get(a[0])?.has(a[1]) ? 1 : 0;
+    case "ZINCRBY": { const z = kv.get(a[0]) || new Map(); z.set(a[2], (z.get(a[2]) || 0) + a[1]); kv.set(a[0], z); return String(z.get(a[2])); }
+    case "ZSCORE": { const v = kv.get(a[0])?.get(a[1]); return v === undefined ? null : String(v); }
+    case "ZREVRANK": { const z = kv.get(a[0]); if (!z?.has(a[1])) return null; return [...z].sort((x, y) => y[1] - x[1] || (x[0] < y[0] ? 1 : -1)).findIndex(e => e[0] === a[1]); }
+    case "ZREVRANGE": return [...(kv.get(a[0]) || [])].sort((x, y) => y[1] - x[1] || (x[0] < y[0] ? 1 : -1)).slice(a[1], a[2] + 1).flatMap(e => [e[0], String(e[1])]);
     case "SCARD": return kv.get(a[0])?.size || 0;
     case "SMEMBERS": return [...(kv.get(a[0]) || [])];
     case "LPUSH": { const l = kv.get(a[0]) || []; l.unshift(a[1]); kv.set(a[0], l); return l.length; }
@@ -30,7 +34,7 @@ L._setRedis(async (cmd, ...a) => {
 
 const routes = {
   signup: require("../api/auth/signup"), login: require("../api/auth/login"),
-  logout: require("../api/auth/logout"), feed: require("../api/feed"), comments: require("../api/comments"), me: require("../api/me"), workouts: require("../api/workouts"),
+  logout: require("../api/auth/logout"), feed: require("../api/feed"), ranking: require("../api/ranking"), comments: require("../api/comments"), me: require("../api/me"), workouts: require("../api/workouts"),
 };
 let ipSeq = 0;
 async function call(route, method, { body, cookie, query, ip } = {}) {
@@ -142,4 +146,29 @@ test("커뮤니티: 공유 → 피드 → 좋아요·댓글 → 공유 해제", 
   await call("workouts", "PATCH", { cookie: a.cookie, query: { id }, body: { shared: false } });
   assert.equal((await call("feed", "GET", { cookie: b.cookie })).json.posts.length, 0);
   assert.equal((await call("comments", "GET", { cookie: b.cookie, query: { id } })).status, 404);
+});
+
+test("랭킹: 일·주·월 거리 합산, 동점 같은 순위, 삭제 시 차감, 로그인 필요", async () => {
+  const today = new Date(Date.now() + 9 * 3600e3).toISOString().slice(0, 10);
+  const mk = async nick => (await call("signup", "POST", { body: { nickname: nick, password: "1234" } })).cookie;
+  const [x, y, z] = [await mk("랭크엑스"), await mk("랭크와이"), await mk("랭크제트")];
+  const add = (c, km, date = today) => call("workouts", "POST", { cookie: c, body: { date, courseName: "코스", min: 30, km, kcal: 100 } });
+  const first = await add(x, 3.2);
+  await add(x, 1.8);                       // X 합계 5
+  await add(y, 5);                         // Y 5 → X와 동점
+  await add(z, 2.5, "2000-01-03");         // 아주 옛날 기록: 이번 기간 랭킹에 안 잡힘
+
+  assert.equal((await call("ranking", "GET", {})).status, 401);
+  for (const period of ["day", "week", "month"]) {
+    const r = (await call("ranking", "GET", { cookie: z, query: { period } })).json;
+    const mine = r.rows.filter(a => ["랭크엑스", "랭크와이"].includes(a.nickname));
+    assert.deepEqual(mine.map(a => a.km), [5, 5]);
+    assert.equal(mine[0].rank, mine[1].rank, period + " 동점은 같은 순위");
+    assert.equal(r.me, null, "이번 기간 기록 없는 사용자는 순위 없음");
+  }
+  await call("workouts", "DELETE", { cookie: x, query: { id: first.json.workouts[0].id } });
+  const r = (await call("ranking", "GET", { cookie: x, query: { period: "week" } })).json;
+  assert.equal(r.me.km, 1.8, "삭제하면 거리 차감");
+  const rk = n => r.rows.find(a => a.nickname === n).rank;
+  assert.ok(rk("랭크와이") < rk("랭크엑스"));
 });

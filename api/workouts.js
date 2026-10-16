@@ -49,6 +49,7 @@ module.exports = L.handler({
     const count = await L.redis("LLEN", listKey(user));
     if (count + rows.length > MAX) throw new L.HttpError(400, `기록은 최대 ${MAX}개까지 저장할 수 있어요`);
     await L.redis("RPUSH", listKey(user), ...rows.map(r => JSON.stringify(r)));
+    await L.pipeline(rows.flatMap(r => L.rankCmds(r.date, r.km, user.nickname)));
     res.status(201).json({ workouts: rows });
   },
   // PATCH /api/workouts?id=...  { shared: true|false } → 커뮤니티에 공유/공유 해제
@@ -75,6 +76,8 @@ module.exports = L.handler({
     const hit = all.find(s => JSON.parse(s).id === id);
     if (!hit) throw new L.HttpError(404, "기록을 찾지 못했어요");
     await L.redis("LREM", listKey(user), 1, hit);
+    const gone = JSON.parse(hit);
+    await L.pipeline(L.rankCmds(gone.date, gone.km, user.nickname, -1));
     await unshare(user, id);
     res.status(200).json({ ok: true });
   },
