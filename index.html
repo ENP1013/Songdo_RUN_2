@@ -34,8 +34,19 @@
   --map-land:#1A201E; --map-park:#24412F; --map-water:#1F3A52; --map-road:#3A4441; --map-road-edge:#2B3431; --map-foot:#4A5551; --map-bound:#8FA39A; --tile-filter:invert(1) hue-rotate(180deg) brightness(.9) contrast(.85) saturate(.6); color-scheme:dark}
 
 *{box-sizing:border-box}
+/* 장식: 오른쪽 위에서 흘러내리는 스피드 라인(로고의 기울어진 글자체와 맞춤). 마스크로 아래로 갈수록 사라짐 */
+body::before{content:"";position:fixed;top:0;left:0;right:0;height:360px;pointer-events:none;z-index:-1;
+  background:linear-gradient(108deg,transparent 0 58%,color-mix(in srgb,var(--volt) 55%,transparent) 58% 64%,transparent 64% 67%,color-mix(in srgb,var(--accent) 38%,transparent) 67% 70%,transparent 70% 72%,color-mix(in srgb,var(--water) 30%,transparent) 72% 73.5%,transparent 73.5% 80%,color-mix(in srgb,var(--volt) 38%,transparent) 80% 90%,transparent 90%);
+  -webkit-mask:linear-gradient(#000,transparent);mask:linear-gradient(#000,transparent)}
 [hidden]{display:none!important}
-body{background:var(--bg);color:var(--ink);font-family:var(--f-body);font-size:15px;line-height:1.55;
+/* 배경: 러닝 앱(Strava·Nike Run Club)처럼 단일 생동 색 포인트 + 넉넉한 여백. 색 빛 번짐 네 곳과 옅은 점 격자를 아주 옅게 깔고, 내용 패널은 불투명 */
+body{background:
+  radial-gradient(900px 520px at 6% -6%,color-mix(in srgb,var(--accent) 18%,transparent),transparent 70%),
+  radial-gradient(800px 480px at 100% 0%,color-mix(in srgb,var(--volt) 16%,transparent),transparent 65%),
+  radial-gradient(700px 520px at 0% 100%,color-mix(in srgb,var(--water) 16%,transparent),transparent 70%),
+  radial-gradient(600px 420px at 100% 62%,color-mix(in srgb,var(--signal) 11%,transparent),transparent 70%),
+  radial-gradient(color-mix(in srgb,var(--ink) 9%,transparent) 1px,transparent 1.5px) 0 0/22px 22px,
+  var(--bg);background-attachment:fixed;color:var(--ink);font-family:var(--f-body);font-size:15px;line-height:1.55;
   padding-left:max(16px,env(safe-area-inset-left,0px));padding-right:max(16px,env(safe-area-inset-right,0px));padding-block:20px 48px}
 .wrap{max-width:1180px;margin:0 auto;display:flex;flex-direction:column;gap:20px}
 h1,h2,h3{font-family:var(--f-display);text-wrap:balance;margin:0;letter-spacing:-.01em}
