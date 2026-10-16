@@ -295,6 +295,7 @@ const Engine = (() => {
   }
 
   /* ---------- 공개 API ---------- */
+  const WATER_MIN = 0.1;   // 물가 구간이 10% 넘는 후보가 하나도 없으면 공원 기준으로 고른다
   const SCENE_W = 100;   // 선호 풍경 가중치 (200이면 물가 코스 거리 오차가 평균 12%까지 벌어짐)
   // prefs: { scenery: "park" | "water" | "city" | "mountain" | "" (상관없음), difficulty }
   function plan(A, B, Dm, prefs, avoid = new Set()) {
@@ -335,8 +336,9 @@ const Engine = (() => {
     // 고른 풍경의 구간 비율을 후보 중 최고값에 견줘 0~1로 맞춘 뒤 SCENE_W를 곱한다.
     // 물가처럼 비율이 원래 낮은 풍경도 효과가 나도록 상대값을 쓰고, 최고값이 25% 미만이면 25%로 나눠 미미한 차이는 키우지 않는다.
     const analyzed = cands.map(c => { const path = toPath(c.nodes); return { c, path, an: analyze(path) }; });
-    const sceneRatio = an => prefs.scenery === "park" ? an.park : prefs.scenery === "water" ? an.water
-      : prefs.scenery === "city" ? 1 - Math.max(an.park, an.water) : 0;
+    const scene = prefs.scenery === "water" && Math.max(...analyzed.map(x => x.an.water)) < WATER_MIN ? "park" : prefs.scenery;
+    const sceneRatio = an => scene === "park" ? an.park : scene === "water" ? an.water
+      : scene === "city" ? 1 - Math.max(an.park, an.water) : 0;
     const bestRatio = Math.max(0.25, ...analyzed.map(x => sceneRatio(x.an)));
     const scored = analyzed.map(({ c, path, an }) => {
       const err = Math.abs(an.m - Dm) / Dm;
@@ -351,6 +353,7 @@ const Engine = (() => {
     }).sort((x, y) => y.score - x.score);
     const best = scored[0];
     best.name = courseName(best, A, B, same);
+    if (scene !== prefs.scenery) best.sceneFallback = scene;
     return best;
   }
 

@@ -945,6 +945,7 @@ function renderDetail(r) {
       <div class="actions"><button type="button" class="btn go" id="startRun" ${c.infeasible || Run.s ? "disabled" : ""}>▶ 운동 시작</button>
         <button type="button" class="btn" id="done" ${c.infeasible ? "disabled" : ""}>완료 기록하기</button></div>
     </div>
+    ${c.sceneFallback ? `<p class="alert" style="margin:12px 18px 0">주변 경로에 가능한 물가가 없습니다, 공원을 기준으로 검색했습니다.</p>` : ""}
     ${c.infeasible ? `<p class="alert" style="margin:12px 18px 0">도착지까지 가장 짧은 길도 ${fmtKm(r.km)}라서 ${r.min}분 안에 도착하기 어려워요. 이 속도로 약 ${fmtMin(r.estMin)} 걸립니다. 지도에는 최단 경로를 표시했어요.</p>` : ""}
     <div class="kpis">
       <div class="kpi"><div class="k">운동 시간</div><div class="v">${fmtMin(r.min)}</div><div class="s">실거리 기준 ${fmtMin(r.estMin)}</div></div>

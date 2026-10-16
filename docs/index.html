@@ -847,6 +847,7 @@ const Engine = (() => {
   }
 
   /* ---------- 공개 API ---------- */
+  const WATER_MIN = 0.1;   // 물가 구간이 10% 넘는 후보가 하나도 없으면 공원 기준으로 고른다
   const SCENE_W = 100;   // 선호 풍경 가중치 (200이면 물가 코스 거리 오차가 평균 12%까지 벌어짐)
   // prefs: { scenery: "park" | "water" | "city" | "mountain" | "" (상관없음), difficulty }
   function plan(A, B, Dm, prefs, avoid = new Set()) {
@@ -887,8 +888,9 @@ const Engine = (() => {
     // 고른 풍경의 구간 비율을 후보 중 최고값에 견줘 0~1로 맞춘 뒤 SCENE_W를 곱한다.
     // 물가처럼 비율이 원래 낮은 풍경도 효과가 나도록 상대값을 쓰고, 최고값이 25% 미만이면 25%로 나눠 미미한 차이는 키우지 않는다.
     const analyzed = cands.map(c => { const path = toPath(c.nodes); return { c, path, an: analyze(path) }; });
-    const sceneRatio = an => prefs.scenery === "park" ? an.park : prefs.scenery === "water" ? an.water
-      : prefs.scenery === "city" ? 1 - Math.max(an.park, an.water) : 0;
+    const scene = prefs.scenery === "water" && Math.max(...analyzed.map(x => x.an.water)) < WATER_MIN ? "park" : prefs.scenery;
+    const sceneRatio = an => scene === "park" ? an.park : scene === "water" ? an.water
+      : scene === "city" ? 1 - Math.max(an.park, an.water) : 0;
     const bestRatio = Math.max(0.25, ...analyzed.map(x => sceneRatio(x.an)));
     const scored = analyzed.map(({ c, path, an }) => {
       const err = Math.abs(an.m - Dm) / Dm;
@@ -903,6 +905,7 @@ const Engine = (() => {
     }).sort((x, y) => y.score - x.score);
     const best = scored[0];
     best.name = courseName(best, A, B, same);
+    if (scene !== prefs.scenery) best.sceneFallback = scene;
     return best;
   }
 
@@ -1314,6 +1317,7 @@ function renderDetail(r) {
       <div class="actions"><button type="button" class="btn go" id="startRun" ${c.infeasible || Run.s ? "disabled" : ""}>▶ 운동 시작</button>
         <button type="button" class="btn" id="done" ${c.infeasible ? "disabled" : ""}>완료 기록하기</button></div>
     </div>
+    ${c.sceneFallback ? `<p class="alert" style="margin:12px 18px 0">주변 경로에 가능한 물가가 없습니다, 공원을 기준으로 검색했습니다.</p>` : ""}
     ${c.infeasible ? `<p class="alert" style="margin:12px 18px 0">도착지까지 가장 짧은 길도 ${fmtKm(r.km)}라서 ${r.min}분 안에 도착하기 어려워요. 이 속도로 약 ${fmtMin(r.estMin)} 걸립니다. 지도에는 최단 경로를 표시했어요.</p>` : ""}
     <div class="kpis">
       <div class="kpi"><div class="k">운동 시간</div><div class="v">${fmtMin(r.min)}</div><div class="s">실거리 기준 ${fmtMin(r.estMin)}</div></div>
