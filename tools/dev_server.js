@@ -3,6 +3,7 @@
 const http = require("http"), fs = require("fs"), path = require("path");
 const L = require("../api/_lib");
 const ROOT = path.join(__dirname, "..");
+const envNames = require("./load_env")(path.join(ROOT, ".env"));   // .env의 OPENAI_API_KEY·OPENAI_MODEL 등 (.env.example 참고)
 
 if (!process.env.KV_REST_API_URL && !process.env.UPSTASH_REDIS_REST_URL) {
   const kv = new Map();
@@ -33,6 +34,7 @@ if (!process.env.KV_REST_API_URL && !process.env.UPSTASH_REDIS_REST_URL) {
   })[cmd]());
 }
 
+if (envNames.length) console.log(`.env 로드: ${envNames.join(", ")}`);   // 이름만 출력(값은 남기지 않음)
 http.createServer(async (req, res) => {
   const url = new URL(req.url, "http://localhost");
   if (url.pathname.startsWith("/api/")) {

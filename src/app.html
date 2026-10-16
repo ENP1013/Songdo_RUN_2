@@ -1136,8 +1136,8 @@ function aiHtml(a) {
     <ul class="tips">${a.tips.map(x => `<li>${esc(x)}</li>`).join("")}</ul>
     <p class="motto">${esc(a.motivation)}</p></div>`;
 }
-function wireAi(r) {
-  if (!sampleFn || r.c.infeasible) return;
+function wireAi(r) {   // claude.ai에서는 호스트 AI, 일반 호스팅(서버 있음)에서는 서버가 부르는 GPT
+  if (!$("aiActions") || !(sampleFn || Account.available) || r.c.infeasible) return;
   $("aiActions").hidden = false;
   $("aiBtn").onclick = () => askAi(r);
   $("aiStop").onclick = () => aiCtl?.abort();
@@ -1150,10 +1150,14 @@ async function askAi(r) {
 운동: ${input.customOn ? fmtPace(r.kmh) : PACES[input.pace].label}, ${fmtMin(r.min)}, 코스 거리 ${fmtKm(r.km)}, 예상 칼로리 ${fmtKcal(r.kcal)}, 난이도 ${DIFFS[shownDiff(r)].label}
 사용자 목표: ${GOALS[input.goal]} (다이어트=꾸준한 속도와 칼로리, 기록=페이스 전략, 힐링=공원 풍경과 호흡)
 한국어로, JSON 하나만 답하세요: {"courseDescription": "코스 소개 2문장", "tips": ["팁1","팁2","팁3"], "motivation": "동기부여 한 문장"}`;
+  if (!sampleFn && !Account.user) { toast("로그인하면 AI 팁을 받을 수 있어요"); Account.openLogin(); return; }
   aiCtl = new AbortController();
   $("aiBtn").disabled = true; $("aiStop").hidden = false; $("aiNote").textContent = "코스 설명을 쓰는 중...";
   try {
-    const a = await sampleFn.json(prompt, { modelTier: "quick", signal: aiCtl.signal, cache: aiCache[key] ? false : true });
+    const a = sampleFn ? await sampleFn.json(prompt, { modelTier: "quick", signal: aiCtl.signal, cache: aiCache[key] ? false : true })
+      : await Account.api("POST", "/api/tips", { name: r.name, kind: c.kind, start: input.start.name, dest: samePlace() ? "" : input.dest.name,
+        parks: c.parkNames.slice(0, 4), parkPct: (c.park || 0) * 100, waterPct: (c.water || 0) * 100, pace: input.customOn ? fmtPace(r.kmh) : PACES[input.pace].label,
+        min: r.min, km: r.km, kcal: r.kcal, difficulty: shownDiff(r), goal: input.goal });
     if (!a || typeof a.courseDescription !== "string" || !Array.isArray(a.tips)) throw { code: "invalid_json" };
     aiCache[key] = { courseDescription: a.courseDescription, tips: a.tips.slice(0, 3).map(String), motivation: String(a.motivation || "") };
     if (results[selected] && aiKey(results[selected]) === key) { renderDetail(results[selected]); $("aiNote").textContent = "AI가 쓴 문장입니다. 거리·칼로리는 앱 계산값이에요."; }
@@ -1161,8 +1165,8 @@ async function askAi(r) {
     const msg = { cancelled: "", not_granted: "AI 사용이 허용되지 않아 기본 팁을 보여드려요.", sampling_disabled: "이 계정에서는 AI를 쓸 수 없어 기본 팁을 보여드려요.",
       rate_limited: "요청이 많아요. 잠시 후 다시 눌러 주세요.", invalid_json: "답을 해석하지 못했어요. 다시 눌러 주세요." }[e?.code];
     if (["not_granted", "sampling_disabled", "not_declared", "capability_disabled"].includes(e?.code)) sampleFn = null;
-    if ($("aiNote")) $("aiNote").textContent = msg ?? "AI 연결이 끊겼어요. 기본 팁은 그대로 쓸 수 있어요.";
-    if (!sampleFn && $("aiActions")) $("aiActions").hidden = true;
+    if ($("aiNote")) $("aiNote").textContent = msg ?? (e?.status ? e.message : "AI 연결이 끊겼어요. 기본 팁은 그대로 쓸 수 있어요.");
+    if (!sampleFn && !Account.available && $("aiActions")) $("aiActions").hidden = true;
   } finally {
     if ($("aiBtn")) { $("aiBtn").disabled = false; $("aiStop").hidden = true; }
   }
@@ -1762,6 +1766,7 @@ const Account = {
     b.hidden = !this.available;
     b.textContent = this.user ? `${this.user.nickname} 님` : "로그인";
     b.classList.toggle("on", !!this.user);
+    if (results[selected]) wireAi(results[selected]);   // 서버가 있다는 게 확인되면 AI 버튼을 켬
     $("tab-feed").hidden = $("tab-rank").hidden = !this.available;   // 보기는 로그인 없이 가능
     if (!this.available && (!$("view-feed").hidden || !$("view-rank").hidden)) $("tab-log").click();
     $("authOut").hidden = !!this.user; $("authIn").hidden = !this.user;
