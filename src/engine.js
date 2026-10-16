@@ -369,15 +369,14 @@ const Engine = (() => {
     return best;
   }
 
-  /* ---------- 동물 얼굴 코스 (이벤트) ---------- */
-  // 얼굴 윤곽(x 오른쪽, y 위쪽, 폭 약 1)을 출발지에 맞춰 놓고 일정 간격으로 경유지를 찍어 보행로로 잇는다.
+  /* ---------- 모양 코스 (이벤트) ---------- */
+  // 모양 윤곽(x 오른쪽, y 위쪽, 폭 약 1)을 출발지에 맞춰 놓고 일정 간격으로 경유지를 찍어 보행로로 잇는다.
   // 경유지 간격(140·100 m)과 출발지에 맞출 꼭짓점·회전(±15°)·크기를 바꿔 보며 기준을 통과한 경로 중 윤곽과 가장 비슷한 것을 고른다 (없으면 null)
   const SHAPES = {
-    cat: [[0, -0.5], [0.35, -0.42], [0.5, -0.1], [0.5, 0.25], [0.46, 0.72], [0.2, 0.42], [-0.2, 0.42], [-0.46, 0.72], [-0.5, 0.25], [-0.5, -0.1], [-0.35, -0.42], [0, -0.5]],
     heart: [[0, -0.55], [0.3, -0.25], [0.5, 0.02], [0.56, 0.28], [0.46, 0.48], [0.26, 0.55], [0.1, 0.46], [0, 0.32], [-0.1, 0.46], [-0.26, 0.55], [-0.46, 0.48], [-0.56, 0.28], [-0.5, 0.02], [-0.3, -0.25], [0, -0.55]],
   };
-  const ANIMAL_OK = { dev: 0.04, err: 0.1, dup: 0.12 };   // 윤곽 편차(얼굴 폭 대비)·거리 오차·되돌아가는 구간 비율 상한
-  function animalRoute(A, Dm, shape = "cat") {
+  const SHAPE_OK = { dev: 0.04, err: 0.1, dup: 0.12 };   // 윤곽 편차(모양 폭 대비)·거리 오차·되돌아가는 구간 비율 상한
+  function shapeRoute(A, Dm, shape = "heart") {
     const T = SHAPES[shape], sN = nearestNode(A, 400);
     if (!T || sN < 0) return null;
     const xy = p => [(p[1] - A[1]) * KX, (p[0] - A[0]) * KY], ll = ([x, y]) => [A[0] + y / KY, A[1] + x / KX];
@@ -410,11 +409,11 @@ const Engine = (() => {
       for (let i = 1; i < path.length; i++) { const kk = [path[i - 1], path[i]].map(q => q.join()).sort().join("|"); if (keys.has(kk)) dup++; keys.add(kk); }
       const err = Math.abs(an.m - Dm) / Dm; dup /= Math.max(1, path.length - 1);
       const score = dev + err * 0.5 + dup * 0.5;
-      const pass = dev <= ANIMAL_OK.dev && err <= ANIMAL_OK.err && dup <= ANIMAL_OK.dup;
+      const pass = dev <= SHAPE_OK.dev && err <= SHAPE_OK.err && dup <= SHAPE_OK.dup;
       if (pass && (!best || score < best.score)) best = { path, ...an, dev, err, dup, score, outline: pts.map(ll) };
     }
     if (!best) return null;
-    return { ...best, kind: "animal", shape, id: "animal:" + shape, name: { cat: "고양이 얼굴 코스", heart: "하트 코스" }[shape], kmMarks: kmMarks(best.path) };
+    return { ...best, kind: "shape", shape, id: "shape:" + shape, name: { heart: "하트 코스" }[shape], kmMarks: kmMarks(best.path) };
   }
 
   function courseName(c, A, B, same) {
@@ -427,6 +426,6 @@ const Engine = (() => {
     return via ? `${via} 경유 ${dir}쪽 루프` : `${dir}쪽 동네 한 바퀴`;
   }
 
-  return { load, plan, animalRoute, inSongdo, nearestNode, distM, get data() { return loaded; } };
+  return { load, plan, shapeRoute, inSongdo, nearestNode, distM, get data() { return loaded; } };
 })();
 if (typeof module !== "undefined") module.exports = Engine;

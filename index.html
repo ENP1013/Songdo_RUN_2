@@ -102,10 +102,10 @@ select,textarea,input[type=number],input[type=text]{background:var(--bg);border:
 .target b{color:var(--ink)}
 .status{margin-left:auto;font-size:12.5px;color:var(--accent);font-weight:600}
 .cards{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:10px}
-.animal-row{display:flex;flex-direction:column;align-items:center;gap:4px;margin-top:-2px}
-.animal-btn{font-size:12px;font-weight:700;padding:4px 10px;border-radius:999px;border:1px solid var(--accent);background:var(--accent-soft);color:var(--accent);cursor:pointer;white-space:nowrap}
-.animal-btn:disabled{opacity:.5;cursor:default;border-color:var(--line);background:transparent;color:var(--muted)}
-.animal-btn[aria-pressed="true"]{background:var(--accent);color:var(--surface)}
+.shape-row{display:flex;flex-direction:column;align-items:center;gap:4px;margin-top:-2px}
+.shape-btn{font-size:12px;font-weight:700;padding:4px 10px;border-radius:999px;border:1px solid var(--accent);background:var(--accent-soft);color:var(--accent);cursor:pointer;white-space:nowrap}
+.shape-btn:disabled{opacity:.5;cursor:default;border-color:var(--line);background:transparent;color:var(--muted)}
+.shape-btn[aria-pressed="true"]{background:var(--accent);color:var(--surface)}
 @media (max-width:560px){
   .cards{gap:8px}
   .card{padding:10px;gap:6px}
@@ -978,15 +978,14 @@ const Engine = (() => {
     return best;
   }
 
-  /* ---------- 동물 얼굴 코스 (이벤트) ---------- */
-  // 얼굴 윤곽(x 오른쪽, y 위쪽, 폭 약 1)을 출발지에 맞춰 놓고 일정 간격으로 경유지를 찍어 보행로로 잇는다.
+  /* ---------- 모양 코스 (이벤트) ---------- */
+  // 모양 윤곽(x 오른쪽, y 위쪽, 폭 약 1)을 출발지에 맞춰 놓고 일정 간격으로 경유지를 찍어 보행로로 잇는다.
   // 경유지 간격(140·100 m)과 출발지에 맞출 꼭짓점·회전(±15°)·크기를 바꿔 보며 기준을 통과한 경로 중 윤곽과 가장 비슷한 것을 고른다 (없으면 null)
   const SHAPES = {
-    cat: [[0, -0.5], [0.35, -0.42], [0.5, -0.1], [0.5, 0.25], [0.46, 0.72], [0.2, 0.42], [-0.2, 0.42], [-0.46, 0.72], [-0.5, 0.25], [-0.5, -0.1], [-0.35, -0.42], [0, -0.5]],
     heart: [[0, -0.55], [0.3, -0.25], [0.5, 0.02], [0.56, 0.28], [0.46, 0.48], [0.26, 0.55], [0.1, 0.46], [0, 0.32], [-0.1, 0.46], [-0.26, 0.55], [-0.46, 0.48], [-0.56, 0.28], [-0.5, 0.02], [-0.3, -0.25], [0, -0.55]],
   };
-  const ANIMAL_OK = { dev: 0.04, err: 0.1, dup: 0.12 };   // 윤곽 편차(얼굴 폭 대비)·거리 오차·되돌아가는 구간 비율 상한
-  function animalRoute(A, Dm, shape = "cat") {
+  const SHAPE_OK = { dev: 0.04, err: 0.1, dup: 0.12 };   // 윤곽 편차(모양 폭 대비)·거리 오차·되돌아가는 구간 비율 상한
+  function shapeRoute(A, Dm, shape = "heart") {
     const T = SHAPES[shape], sN = nearestNode(A, 400);
     if (!T || sN < 0) return null;
     const xy = p => [(p[1] - A[1]) * KX, (p[0] - A[0]) * KY], ll = ([x, y]) => [A[0] + y / KY, A[1] + x / KX];
@@ -1019,11 +1018,11 @@ const Engine = (() => {
       for (let i = 1; i < path.length; i++) { const kk = [path[i - 1], path[i]].map(q => q.join()).sort().join("|"); if (keys.has(kk)) dup++; keys.add(kk); }
       const err = Math.abs(an.m - Dm) / Dm; dup /= Math.max(1, path.length - 1);
       const score = dev + err * 0.5 + dup * 0.5;
-      const pass = dev <= ANIMAL_OK.dev && err <= ANIMAL_OK.err && dup <= ANIMAL_OK.dup;
+      const pass = dev <= SHAPE_OK.dev && err <= SHAPE_OK.err && dup <= SHAPE_OK.dup;
       if (pass && (!best || score < best.score)) best = { path, ...an, dev, err, dup, score, outline: pts.map(ll) };
     }
     if (!best) return null;
-    return { ...best, kind: "animal", shape, id: "animal:" + shape, name: { cat: "고양이 얼굴 코스", heart: "하트 코스" }[shape], kmMarks: kmMarks(best.path) };
+    return { ...best, kind: "shape", shape, id: "shape:" + shape, name: { heart: "하트 코스" }[shape], kmMarks: kmMarks(best.path) };
   }
 
   function courseName(c, A, B, same) {
@@ -1036,7 +1035,7 @@ const Engine = (() => {
     return via ? `${via} 경유 ${dir}쪽 루프` : `${dir}쪽 동네 한 바퀴`;
   }
 
-  return { load, plan, animalRoute, inSongdo, nearestNode, distM, get data() { return loaded; } };
+  return { load, plan, shapeRoute, inSongdo, nearestNode, distM, get data() { return loaded; } };
 })();
 if (typeof module !== "undefined") module.exports = Engine;
 
@@ -1165,14 +1164,13 @@ if (!(input.customKmh >= 3 && input.customKmh <= 25)) input.customKmh = DEFAULT_
 if (!PACES[input.pace]) input.pace = "jog";
 let records = store.get("records", []);
 let selected = 1;       // 기본으로 40분 코스를 펼침
-/* 모양 코스 (이벤트): 아래 역·공원을 출발지=도착지로 고르면 60분 카드 아래에 '동물 만들기'·'하트 만들기'가 나타난다.
-   Engine.animalRoute로 모양이 또렷하게 그려지는 곳만 골랐고, 지금 페이스의 60분 거리로 그릴 수 없으면 버튼이 꺼진다 */
+/* 모양 코스 (이벤트): 아래 역·공원을 출발지=도착지로 고르면 60분 카드 아래에 '하트 만들기'가 나타난다.
+   Engine.shapeRoute로 모양이 또렷하게 그려지는 곳만 골랐고, 지금 페이스의 60분 거리로 그릴 수 없으면 버튼이 꺼진다 */
 const SHAPE_EVENTS = {
-  cat: { label: "🐱 동물 만들기", tip: "고양이 얼굴", places: ["센트럴파크역", "국제업무지구역", "인천대입구역", "테크노파크역", "캠퍼스타운역", "센트럴파크", "국제화복합단지 1호 근린공원", "제33호 근린공원"] },
   heart: { label: "❤️ 하트 만들기", tip: "하트", places: ["센트럴파크역", "인천대입구역", "테크노파크역", "캠퍼스타운역", "센트럴파크", "신송공원", "해돋이공원", "미추홀공원"] },
 };
-const Animal = { cache: new Map(), on: null, orig: null };   // on: 지금 60분 자리에 그린 모양
-const animalIdx = () => DURATIONS.indexOf(60);
+const Shape = { cache: new Map(), on: null, orig: null };   // on: 지금 60분 자리에 그린 모양
+const shapeIdx = () => DURATIONS.indexOf(60);
 const shapeKey = shape => samePlace() && SHAPE_EVENTS[shape].places.includes(input.start.name)
   ? `${shape}|${input.start.name}|${Math.round(targetKm(curKmh(), 60) * 1000)}` : null;
 let results = [];
@@ -1337,7 +1335,7 @@ function drawRoute(fit = false) {
   let dupShown = false, arrowShown = false;
   if (r && r.path) {
     const ll = r.path;
-    if (r.c.outline) L.polyline(r.c.outline, { color: css("--accent"), weight: 16, opacity: 0.3, lineJoin: "round", lineCap: "round", interactive: false }).addTo(routeLayer);   // 동물 코스: 목표 윤곽
+    if (r.c.outline) L.polyline(r.c.outline, { color: css("--accent"), weight: 16, opacity: 0.3, lineJoin: "round", lineCap: "round", interactive: false }).addTo(routeLayer);   // 모양 코스: 목표 윤곽
     L.polyline(ll, { color: "#ffffff", weight: 9, opacity: 0.9, lineJoin: "round", interactive: false }).addTo(routeLayer);
     if (r.ivl && !r.c.infeasible) {   // 계획 속도대로 달린다고 보고, 시간 비율로 경로를 나눠 색칠
       const col = { w: css("--muted"), f: css("--route"), e: css("--start") };
@@ -1353,7 +1351,7 @@ function drawRoute(fit = false) {
       }
       dupShown = runs.some(x => x.n > 1);
     }
-    if (!r.c.infeasible) arrowShown = drawArrows(ll, !!r.ivl, r.c.kind === "animal");   // 동물 코스는 그림이 가려지지 않게 출발 방향만   // 인터벌은 색이 강도를 뜻하므로 화살표는 검정
+    if (!r.c.infeasible) arrowShown = drawArrows(ll, !!r.ivl, r.c.kind === "shape");   // 인터벌은 검정 화살표, 모양 코스는 그림이 가려지지 않게 출발 방향만
     const c = r.c;
     // 반환점은 출발지로 돌아오는 코스에서만 표시
     if (same && c.turn) L.marker(c.turn, { interactive: false, keyboard: false, zIndexOffset: 500,
@@ -1460,7 +1458,7 @@ function update(recompute, debounce = false) {
   timer = setTimeout(() => {
     const kmh = Calc.speedKmh(input.pace, input.customOn ? input.customKmh : 0);
     const avoid = new Set();
-    Animal.on = null;
+    Shape.on = null;
     results = DURATIONS.map(min => {
       const c = Engine.plan(input.start.at, input.dest.at, targetKm(kmh, min) * 1000,
         { scenery: input.scenery, difficulty: input.difficulty }, avoid);
@@ -1507,9 +1505,9 @@ function renderResults(fit) {
       <div class="name">${esc(r.name)}</div>
       <div class="stats"><span><b>${fmtKm(r.km)}</b></span><span><b>${fmtKcal(r.kcal)}</b></span></div>
       <div class="tags">${diffBadge(shownDiff(r))}${c.park != null ? `<span class="badge park">공원 ${fmtPct(c.park)}</span>` : ""}${fb}${warn}</div>
-    </button>`; }).join("") + animalButton();
+    </button>`; }).join("") + shapeButtons();
   $("cards").onclick = e => {
-    const ab = e.target.closest(".animal-btn"); if (ab) return toggleAnimal(ab.dataset.shape);
+    const ab = e.target.closest(".shape-btn"); if (ab) return toggleShape(ab.dataset.shape);
     const b = e.target.closest(".card"); if (!b) return; selected = +b.dataset.i; renderResults(true);
   };
   renderDetail(results[selected]);
@@ -1517,33 +1515,33 @@ function renderResults(fit) {
 }
 
 // 60분 카드 아래 모양 버튼: 처음 보이면 뒤에서 계산(모양마다 0.3~0.6초)해 두고, 그릴 수 있을 때만 켠다
-function animalButton() {
+function shapeButtons() {
   const btns = Object.entries(SHAPE_EVENTS).map(([shape, ev]) => {
     const key = shapeKey(shape); if (!key) return "";
-    const has = Animal.cache.has(key), ok = has && !!Animal.cache.get(key), on = Animal.on === shape;
+    const has = Shape.cache.has(key), ok = has && !!Shape.cache.get(key), on = Shape.on === shape;
     if (!has) setTimeout(() => {
-      if (Animal.cache.has(key) || shapeKey(shape) !== key) return;
-      Animal.cache.set(key, Engine.animalRoute(input.start.at, targetKm(curKmh(), 60) * 1000, shape));
+      if (Shape.cache.has(key) || shapeKey(shape) !== key) return;
+      Shape.cache.set(key, Engine.shapeRoute(input.start.at, targetKm(curKmh(), 60) * 1000, shape));
       renderResults(false);
     }, 60);
     const label = on ? "원래 코스로" : !has ? "찾는 중…" : ev.label;
-    return `<button type="button" class="animal-btn" data-shape="${shape}" aria-pressed="${on}" ${ok ? "" : "disabled"}
+    return `<button type="button" class="shape-btn" data-shape="${shape}" aria-pressed="${on}" ${ok ? "" : "disabled"}
       title="${has && !ok ? `이 페이스의 60분 거리로는 ${ev.tip} 모양이 나오지 않아요` : `경로로 지도에 ${ev.tip}을(를) 그려요`}">${label}</button>`;
   }).join("");
-  return btns ? `<div class="animal-row" style="grid-column:${animalIdx() + 1}">${btns}</div>` : "";
+  return btns ? `<div class="shape-row" style="grid-column:${shapeIdx() + 1}">${btns}</div>` : "";
 }
-function toggleAnimal(shape) {
-  const i = animalIdx(), c = Animal.cache.get(shapeKey(shape));
-  if (Animal.on) results[i] = Animal.orig;   // 다른 모양을 누르면 원래 코스로 되돌린 뒤 바꿈
-  if (Animal.on === shape || !c) Animal.on = null;
-  else { Animal.orig = results[i]; results[i] = withNumbers({ min: 60, c }); Animal.on = shape; }
+function toggleShape(shape) {
+  const i = shapeIdx(), c = Shape.cache.get(shapeKey(shape));
+  if (Shape.on) results[i] = Shape.orig;   // 다른 모양을 누르면 원래 코스로 되돌린 뒤 바꿈
+  if (Shape.on === shape || !c) Shape.on = null;
+  else { Shape.orig = results[i]; results[i] = withNumbers({ min: 60, c }); Shape.on = shape; }
   selected = i; renderResults(true);
 }
 
 function aiKey(r) { return [r.name, r.min, input.pace, input.difficulty, input.goal, Math.round(r.km * 10)].join("|"); }
 // 운동 기록(GPS)은 휴대폰에서만: 데스크톱 브라우저에서는 운동 시작·완료 기록 버튼을 끈다 (iPadOS는 Mac처럼 보여 터치 수로 구분)
 const IS_MOBILE = /Android|iPhone|iPad|iPod|Mobile/i.test(navigator.userAgent) || (navigator.maxTouchPoints > 1 && /Macintosh/.test(navigator.userAgent));
-const KIND = { circle: "순환 루프", park: "공원 둘레 반복", detour: "도착지로 가는 우회 코스", out: "갔다가 돌아오는 왕복", hill: "언덕 반복", direct: "최단 경로", animal: "지도에 모양 그리기" };
+const KIND = { circle: "순환 루프", park: "공원 둘레 반복", detour: "도착지로 가는 우회 코스", out: "갔다가 돌아오는 왕복", hill: "언덕 반복", direct: "최단 경로", shape: "지도에 모양 그리기" };
 
 function renderDetail(r) {
   const c = r.c;
