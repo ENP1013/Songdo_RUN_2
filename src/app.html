@@ -213,6 +213,13 @@ table.log td.n{font-family:var(--f-num);text-align:right;white-space:nowrap}
 .post .acts button[aria-pressed="true"]{color:var(--signal);font-weight:700}
 .cmts{border-top:1px solid var(--line);padding-top:8px;display:flex;flex-direction:column;gap:6px;font-size:14px}
 .cmts form{display:flex;gap:6px}
+.cmt{display:flex;flex-direction:column;gap:2px}
+.cmt.reply{margin-left:22px;padding-left:10px;border-left:2px solid var(--line)}
+.cmt .to{color:var(--accent);font-weight:600}
+.cacts{display:flex;align-items:center;gap:10px;font-size:12px;color:var(--muted)}
+.cacts button{border:0;background:transparent;color:var(--muted);cursor:pointer;font-size:12px;padding:0}
+.cacts button[aria-pressed="true"]{color:var(--signal);font-weight:700}
+.replying{display:flex;justify-content:space-between;align-items:center;font-size:12.5px;color:var(--accent);background:var(--accent-soft);border-radius:8px;padding:4px 10px}
 .cmts input{flex:1;min-width:0;border:1px solid var(--line);background:var(--bg);border-radius:8px;padding:6px 10px}
 .rank{max-width:640px;margin:0 auto;width:100%}
 .rank .seg{display:flex;gap:4px;background:var(--sunk);padding:4px;border-radius:999px;align-self:flex-start}
@@ -529,7 +536,7 @@ body.running{overflow:hidden}
       <div class="field"><label class="label" for="authNick">닉네임</label>
         <input type="text" id="authNick" autocomplete="username" maxlength="12" placeholder="한글·영문·숫자 2~12자"></div>
       <div class="field"><label class="label" for="authPw">비밀번호</label>
-        <input type="password" id="authPw" autocomplete="current-password" placeholder="4자 이상"></div>
+        <input type="password" id="authPw" autocomplete="current-password" placeholder="4~16자"></div>
       <div class="field" id="authWeightRow" hidden><label class="label" for="authWeight">체중 (kg, 선택)</label>
         <input type="number" id="authWeight" min="30" max="150" step="1" placeholder="칼로리 계산에 사용"></div>
       <p class="hint" id="authNote">로그인하면 기록이 계정에 저장돼 어느 기기에서든 볼 수 있어요.</p>
@@ -1088,7 +1095,7 @@ async function toggleShare(id) {
 
 /* ================== 커뮤니티 피드 ================== */
 const Feed = {
-  posts: [], next: 0, loading: false, open: new Set(), cmts: {},
+  posts: [], next: 0, loading: false, open: new Set(), cmts: {}, reply: {},
   async load(more) {
     if (this.loading) return; this.loading = true;
     try {
@@ -1104,23 +1111,45 @@ const Feed = {
       <div class="course">${esc(p.courseName)} ${p.difficulty === "interval" ? diffBadge("interval") : ""}</div>
       <div class="stats"><span>${fmtMin(p.min)}</span><span>${fmtKm(p.km)}</span><span>${fmtKcal(p.kcal)}</span></div>
       <div class="acts"><button data-like aria-pressed="${p.liked}">${p.liked ? "♥" : "♡"} ${p.likes}</button><button data-cmt>댓글 ${p.comments}</button></div>
-      ${this.open.has(p.id) ? `<div class="cmts">${(this.cmts[p.id] || []).map(c => `<div><b>${esc(c.nickname)}</b> ${esc(c.text)} <span style="color:var(--muted);font-size:12px">${ago(c.at)}</span>${c.mine || p.mine ? ` <button class="x" data-del="${c.id}" aria-label="댓글 삭제">×</button>` : ""}</div>`).join("") || `<span style="color:var(--muted)">첫 댓글을 남겨 보세요</span>`}
-        <form data-form><input maxlength="200" placeholder="응원 한마디" aria-label="댓글"><button class="btn" type="submit">등록</button></form></div>` : ""}
+      ${this.open.has(p.id) ? `<div class="cmts">${this.threads(p, ago) || `<span style="color:var(--muted)">첫 댓글을 남겨 보세요</span>`}
+        ${this.reply[p.id] ? `<div class="replying"><span>@${esc(this.reply[p.id].nick)} 님에게 답글</span><button type="button" class="x" data-cancel aria-label="답글 취소">×</button></div>` : ""}
+        ${Account.user ? `<form data-form><input maxlength="200" placeholder="${this.reply[p.id] ? "답글 남기기" : "응원 한마디"}" aria-label="댓글"><button class="btn" type="submit">등록</button></form>` : `<button type="button" class="btn" data-login>로그인하고 댓글 남기기</button>`}</div>` : ""}
     </article>`).join("") : `<div class="empty">아직 공유된 기록이 없어요. 기록 · 배지 탭에서 내 기록의 <b>공유</b>를 눌러 첫 글을 올려 보세요.</div>`)
       + (this.next != null ? `<button class="btn" id="feedMore">더 보기</button>` : "");
   },
+  // 최상위 댓글 아래에 그 답글들을 묶어서 그린다
+  threads(p, ago) {
+    const all = this.cmts[p.id] || [];
+    const one = c => `<div class="cmt${c.parent ? " reply" : ""}">
+      <div><b>${esc(c.nickname)}</b>${c.mine ? " (나)" : ""} ${c.replyTo ? `<span class="to">@${esc(c.replyTo)}</span> ` : ""}${esc(c.text)}</div>
+      <div class="cacts"><span class="ago">${ago(c.at)}</span><button data-clike="${c.id}" aria-pressed="${c.liked}">${c.liked ? "♥" : "♡"} ${c.likes}</button><button data-reply="${c.id}" data-nick="${esc(c.nickname)}">답글</button>${c.mine || p.mine ? `<button class="x" data-del="${c.id}" aria-label="댓글 삭제">×</button>` : ""}</div></div>`;
+    return all.filter(c => !c.parent).map(c => one(c) + all.filter(r => r.parent === c.id).map(one).join("")).join("");
+  },
+  // 좋아요·댓글·답글은 로그인 필요: 안 했으면 로그인 창을 연다
+  needLogin() { if (Account.user) return false; toast("로그인하면 이용할 수 있어요"); Account.openLogin(); return true; },
   async comments(id) { try { this.cmts[id] = (await Account.api("GET", `/api/comments?id=${id}`)).comments; } catch (e) { toast(e.message); } },
   wire() {
     $("feed").onclick = async e => {
       if (e.target.id === "feedMore") return this.load(true);
       const el = e.target.closest("article"); if (!el) return;
       const id = el.dataset.id, p = this.posts.find(x => x.id === id);
+      if (e.target.closest("[data-like],[data-clike],[data-reply]") && this.needLogin()) return;
       if (e.target.closest("[data-like]")) {
         try { const j = await Account.api("POST", "/api/feed", { id }); p.liked = j.liked; p.likes = j.likes; } catch (er) { toast(er.message); }
       } else if (e.target.closest("[data-cmt]")) {
         if (this.open.has(id)) this.open.delete(id); else { this.open.add(id); await this.comments(id); }
+      } else if (e.target.closest("[data-clike]")) {
+        const cid = e.target.closest("[data-clike]").dataset.clike, c = (this.cmts[id] || []).find(x => x.id === cid);
+        try { const j = await Account.api("PATCH", "/api/comments", { id, cid }); if (c) { c.liked = j.liked; c.likes = j.likes; } } catch (er) { toast(er.message); }
+      } else if (e.target.closest("[data-reply]")) {
+        const b = e.target.closest("[data-reply]"); this.reply[id] = { cid: b.dataset.reply, nick: b.dataset.nick };
+        this.render(); el.querySelector("[data-form] input")?.focus(); return;   // 새로 그려진 입력창으로 포커스
+      } else if (e.target.closest("[data-login]")) {
+        Account.openLogin(); return;
+      } else if (e.target.closest("[data-cancel]")) {
+        delete this.reply[id];
       } else if (e.target.closest("[data-del]")) {
-        try { await Account.api("DELETE", `/api/comments?id=${id}&cid=${e.target.closest("[data-del]").dataset.del}`, {}); await this.comments(id); p.comments = this.cmts[id].length; } catch (er) { toast(er.message); }
+        try { await Account.api("DELETE", `/api/comments?id=${id}&cid=${e.target.closest("[data-del]").dataset.del}`, {}); await this.comments(id); p.comments = this.cmts[id].length; delete this.reply[id]; } catch (er) { toast(er.message); }
       } else return;
       this.render();
     };
@@ -1129,7 +1158,8 @@ const Feed = {
       const el = e.target.closest("article"), id = el.dataset.id, text = e.target.querySelector("input").value.trim();
       if (!text) return;
       try {
-        await Account.api("POST", "/api/comments", { id, text });
+        await Account.api("POST", "/api/comments", { id, text, parent: this.reply[id]?.cid });
+        delete this.reply[id];
         await this.comments(id); this.posts.find(x => x.id === id).comments = this.cmts[id].length;
       } catch (er) { toast(er.message); return; }
       this.render();
@@ -1148,7 +1178,7 @@ const Rank = {
       const j = await Account.api("GET", `/api/ranking?period=${this.period}`);
       if (n !== this.seq) return;   // 그 사이 다른 기간을 눌렀으면 버림
       const label = { day: "오늘", week: "이번 주(월~일)", month: "이번 달" }[j.period];
-      $("rankHint").textContent = `${label} 운동 거리 순위 · 가입한 모든 사용자 기준${j.me ? ` · 내 순위 ${j.me.rank}위 (${fmtKm(j.me.km)})` : ""}`;
+      $("rankHint").textContent = `${label} 운동 거리 순위 · 가입한 모든 사용자 기준${j.me ? ` · 내 순위 ${j.me.rank}위 (${fmtKm(j.me.km)})` : Account.user ? "" : " · 로그인하면 내 순위를 볼 수 있어요"}`;
       const inTop = j.rows.some(r => r.mine);
       const li = r => `<li class="${r.mine ? "me" : ""}"><span class="no">${r.rank}</span><span class="nm">${esc(r.nickname)}${r.mine ? " (나)" : ""}</span><span class="km">${fmtKm(r.km)}</span></li>`;
       $("rankList").innerHTML = j.rows.length
@@ -1524,6 +1554,9 @@ const Account = {
     } catch {}
     this.render();
   },
+  openLogin() { $("authErr").hidden = true; this.render(); if (!$("authDlg").open) $("authDlg").showModal(); },
+  // 로그인·로그아웃 뒤 열려 있는 랭킹·커뮤니티는 내 정보(내 순위·좋아요 등)를 반영해 다시 불러옴
+  refreshPublic() { if (!$("view-feed").hidden) Feed.load(); if (!$("view-rank").hidden) Rank.load(); },
   async signedIn(user, fresh) {
     this.user = user;
     if (user.weightKg) { input.weight = user.weightKg; update(false); }
@@ -1531,21 +1564,23 @@ const Account = {
     const local = store.get("records", []);
     $("migrate").hidden = !(fresh && local.length);
     $("migrateN").textContent = local.length;
-    this.render(); renderLog();
+    this.render(); renderLog(); this.refreshPublic();
   },
   render() {
     const b = $("acctBtn");
     b.hidden = !this.available;
     b.textContent = this.user ? `${this.user.nickname} 님` : "로그인";
     b.classList.toggle("on", !!this.user);
-    $("tab-feed").hidden = $("tab-rank").hidden = !this.user;
-    if (!this.user && (!$("view-feed").hidden || !$("view-rank").hidden)) $("tab-log").click();
+    $("tab-feed").hidden = $("tab-rank").hidden = !this.available;   // 보기는 로그인 없이 가능
+    if (!this.available && (!$("view-feed").hidden || !$("view-rank").hidden)) $("tab-log").click();
     $("authOut").hidden = !!this.user; $("authIn").hidden = !this.user;
     $("authTitle").textContent = this.user ? "내 계정" : this.mode === "signup" ? "가입" : "로그인";
     if (this.user) $("authWho").textContent = this.user.nickname;
     for (const x of $("authMode").children) x.setAttribute("aria-pressed", String(x.dataset.v === this.mode));
     $("authWeightRow").hidden = this.mode !== "signup";
     $("authPw").autocomplete = this.mode === "signup" ? "new-password" : "current-password";
+    $("authPw").placeholder = this.mode === "signup" ? "4~16자" : "비밀번호";
+    $("authPw").maxLength = this.mode === "signup" ? 16 : 100;   // 로그인은 기존 가입자(긴 비밀번호)도 입력 가능
     $("authSubmit").textContent = this.mode === "signup" ? "가입하고 시작하기" : "로그인";
     $("authNote").textContent = this.mode === "signup"
       ? "이메일 없이 닉네임과 비밀번호만 써요. 비밀번호를 잊으면 복구할 수 없어요."
@@ -1559,13 +1594,14 @@ const Account = {
     this.wTimer = setTimeout(() => this.api("PATCH", "/api/me", { weightKg: Math.round(v) }).catch(() => {}), 800);
   },
   wire() {
-    $("acctBtn").onclick = () => { $("authErr").hidden = true; this.render(); $("authDlg").showModal(); };
+    $("acctBtn").onclick = () => this.openLogin();
     $("authClose").onclick = () => $("authDlg").close();
     $("authMode").onclick = e => { const b = e.target.closest("button"); if (!b) return; this.mode = b.dataset.v; $("authErr").hidden = true; this.render(); };
     $("authForm").onsubmit = async e => {
       e.preventDefault();
       if (this.user) return;
       const body = { nickname: $("authNick").value.trim(), password: $("authPw").value };
+      if (this.mode === "signup" && ($("authPw").value.length < 4 || $("authPw").value.length > 16)) { $("authErr").textContent = "비밀번호는 4자 이상 16자 이하로 정해 주세요"; $("authErr").hidden = false; return; }
       if (this.mode === "signup") body.weightKg = $("authWeight").value || (input.weight || null);
       $("authSubmit").disabled = true; $("authErr").hidden = true;
       try {
@@ -1591,7 +1627,7 @@ const Account = {
     $("logoutBtn").onclick = async () => {
       try { await this.api("POST", "/api/auth/logout", {}); } catch {}
       this.user = null; records = store.get("records", []);
-      $("authDlg").close(); this.render(); renderLog(); toast("로그아웃했어요");
+      $("authDlg").close(); this.render(); renderLog(); this.refreshPublic(); toast("로그아웃했어요");
     };
   },
 };

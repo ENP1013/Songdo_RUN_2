@@ -31,7 +31,8 @@ async function list(user) {
 
 // 커뮤니티 피드에서 내리기 (게시물·좋아요·댓글 삭제)
 async function unshare(user, id) {
-  await L.pipeline([["DEL", `post:${id}`], ["DEL", `likes:${id}`], ["DEL", `comments:${id}`],
+  const cmts = (await L.redis("LRANGE", `comments:${id}`, 0, -1)) || [];
+  await L.pipeline([...cmts.map(s => ["DEL", `clikes:${JSON.parse(s).id}`]), ["DEL", `post:${id}`], ["DEL", `likes:${id}`], ["DEL", `comments:${id}`],
     ["LREM", "feed", 0, id], ["SREM", `shared:${user.id}`, id]]);
 }
 
