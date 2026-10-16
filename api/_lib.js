@@ -64,6 +64,11 @@ function readSession(req) {
   if (want.length !== got.length || !crypto.timingSafeEqual(want, got)) return null;
   try { const s = JSON.parse(Buffer.from(body, "base64url").toString()); return s.exp > Date.now() ? s : null; } catch { return null; }
 }
+// 읽기 전용 공개 화면(랭킹·커뮤니티)용: 로그인했으면 사용자, 아니면 null (IP별 요청 제한 적용)
+async function optionalUser(req) {
+  if (!readSession(req)) { await rateLimit(`pubread:${clientIp(req)}`, 300, 600); return null; }
+  try { return await requireUser(req); } catch (e) { if (e.status === 401) { await rateLimit(`pubread:${clientIp(req)}`, 300, 600); return null; } throw e; }
+}
 async function requireUser(req) {
   const s = readSession(req);
   if (!s) throw new HttpError(401, "로그인이 필요해요");
@@ -150,7 +155,7 @@ function handler(methods) {
 }
 
 module.exports = {
-  redis, pipeline, rankKeys, rankCmds, ensureRanking, todayKst, HttpError, hashPassword, checkPassword, setSession, clearSession, readSession, requireUser,
+  redis, pipeline, rankKeys, rankCmds, ensureRanking, todayKst, HttpError, hashPassword, checkPassword, setSession, clearSession, readSession, requireUser, optionalUser,
   nickKey, validNick, validWeight, publicUser, clientIp, rateLimit, handler,
   _setRedis: (fn, pipe) => { redisImpl = fn; pipelineImpl = pipe || (cmds => Promise.all(cmds.map(c => fn(...c)))); },   // 테스트용
 };

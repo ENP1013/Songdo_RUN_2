@@ -1,5 +1,5 @@
 // 게시물 댓글
-// GET    /api/comments?id=...             → { comments: [{id, nickname, text, at, mine, parent, replyTo, likes, liked}] }  (parent: 대댓글이면 최상위 댓글 id)
+// GET    /api/comments?id=...             → (비로그인 가능) { comments: [{id, nickname, text, at, mine, parent, replyTo, likes, liked}] }  (parent: 대댓글이면 최상위 댓글 id)
 // POST   /api/comments {id, text, parent?} → { comment }   (parent: 답글 대상 댓글 id. 답글의 답글은 같은 최상위 댓글 아래로 모임)
 // PATCH  /api/comments {id, cid}          → { liked, likes }  (댓글 좋아요 토글)
 // DELETE /api/comments?id=...&cid=...     → 내 댓글 삭제 (게시물 주인은 모든 댓글 삭제 가능, 최상위 댓글을 지우면 답글도 함께 삭제)
@@ -9,7 +9,7 @@ const L = require("./_lib");
 const ID = /^[0-9a-f-]{36}$/;
 const MAX_COMMENTS = 200;
 const q = req => req.query?.id !== undefined ? req.query : Object.fromEntries(new URL(req.url, "http://x").searchParams);
-const view = (c, user, likes = 0, liked = false) => ({ id: c.id, nickname: c.nickname, text: c.text, at: c.at, mine: c.uid === user.id,
+const view = (c, user, likes = 0, liked = false) => ({ id: c.id, nickname: c.nickname, text: c.text, at: c.at, mine: !!user && c.uid === user.id,
   parent: c.parent || null, replyTo: c.replyTo || null, likes, liked });
 const likeKey = cid => `clikes:${cid}`;
 async function post(id) {
@@ -21,10 +21,10 @@ async function post(id) {
 
 module.exports = L.handler({
   async GET(req, res) {
-    const user = await L.requireUser(req);
+    const user = await L.optionalUser(req);   // 비로그인도 댓글 읽기 가능
     const id = String(q(req).id || ""); await post(id);
     const list = (await L.redis("LRANGE", `comments:${id}`, 0, -1) || []).map(s => JSON.parse(s));
-    const r = await L.pipeline(list.flatMap(c => [["SCARD", likeKey(c.id)], ["SISMEMBER", likeKey(c.id), user.id]]));
+    const r = await L.pipeline(list.flatMap(c => [["SCARD", likeKey(c.id)], ["SISMEMBER", likeKey(c.id), user ? user.id : "-"]]));
     res.status(200).json({ comments: list.map((c, i) => view(c, user, r[i * 2] || 0, !!r[i * 2 + 1])) });
   },
   async POST(req, res, body) {
