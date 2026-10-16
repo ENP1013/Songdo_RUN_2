@@ -11,7 +11,7 @@
   --bg:#EEF2EF; --surface:#FFFFFF; --sunk:#E3E9E5; --ink:#15201B; --muted:#56645D; --line:#D3DBD6;
   --accent:#1E6A50; --accent-soft:#D6E9E0; --on-accent:#FFFFFF;
   --signal:#D9531F; --signal-soft:#FBE3D8; --water:#2C6BA8; --warn:#9A6400;
-  --route:#E0261B; --start:#1E8A4C; --dest:#2C6BA8;
+  --route:#E0261B; --route2:#7A3FD6; --start:#1E8A4C; --dest:#2C6BA8;
   --map-land:#F4F3EE; --map-park:#CFE6C9; --map-water:#B9D6EE; --map-road:#FFFFFF; --map-road-edge:#D5D3CB; --map-foot:#C9C3B4; --map-bound:#7D8A84; --tile-filter:none;
   --f-display:"Gothic A1","Apple SD Gothic Neo","Malgun Gothic",sans-serif;
   --f-body:"IBM Plex Sans KR","Apple SD Gothic Neo","Malgun Gothic",sans-serif;
@@ -24,13 +24,13 @@
   --bg:#0E1412; --surface:#161E1B; --sunk:#1D2723; --ink:#E5ECE8; --muted:#97A59E; --line:#2A3631;
   --accent:#55B892; --accent-soft:#1E3A30; --on-accent:#0B1310;
   --signal:#FF8A5C; --signal-soft:#3A2219; --water:#6AA6DE; --warn:#E3B04B;
-  --route:#FF4A3D; --start:#3FCB7A; --dest:#6AA6DE;
+  --route:#FF4A3D; --route2:#B48CFF; --start:#3FCB7A; --dest:#6AA6DE;
   --map-land:#1A201E; --map-park:#24412F; --map-water:#1F3A52; --map-road:#3A4441; --map-road-edge:#2B3431; --map-foot:#4A5551; --map-bound:#8FA39A; --tile-filter:invert(1) hue-rotate(180deg) brightness(.9) contrast(.85) saturate(.6); color-scheme:dark}}
 :root[data-theme="dark"]{
   --bg:#0E1412; --surface:#161E1B; --sunk:#1D2723; --ink:#E5ECE8; --muted:#97A59E; --line:#2A3631;
   --accent:#55B892; --accent-soft:#1E3A30; --on-accent:#0B1310;
   --signal:#FF8A5C; --signal-soft:#3A2219; --water:#6AA6DE; --warn:#E3B04B;
-  --route:#FF4A3D; --start:#3FCB7A; --dest:#6AA6DE;
+  --route:#FF4A3D; --route2:#B48CFF; --start:#3FCB7A; --dest:#6AA6DE;
   --map-land:#1A201E; --map-park:#24412F; --map-water:#1F3A52; --map-road:#3A4441; --map-road-edge:#2B3431; --map-foot:#4A5551; --map-bound:#8FA39A; --tile-filter:invert(1) hue-rotate(180deg) brightness(.9) contrast(.85) saturate(.6); color-scheme:dark}
 
 *{box-sizing:border-box}
@@ -446,6 +446,7 @@ body.running{overflow:hidden}
         </div>
         <div class="maplegend">
           <span id="lgRoute"><i style="background:var(--route)"></i>추천 코스</span>
+          <span id="lgDup" hidden><i style="background:repeating-linear-gradient(0deg,var(--route2) 0 2px,transparent 2px 4px)"></i>여러 번 지나는 구간 (2번 = 2줄, 3번 이상 = 3줄)</span>
           <span id="lgIvl" hidden><i style="background:var(--muted)"></i>워밍업·쿨다운 <i style="background:var(--route);margin-left:8px"></i>고강도 <i style="background:var(--start);margin-left:8px"></i>저강도</span>
           <span id="lgRun" hidden><i style="background:var(--volt);outline:2px solid #0A0A0A"></i>내 이동 경로</span>
           <span><i style="background:var(--map-park)"></i>공원</span>
@@ -1121,6 +1122,7 @@ function initMap() {
   tiles.addTo(map);
   drawBase();
   routeLayer = L.layerGroup().addTo(map);
+  map.on("zoomend", () => drawRoute());   // 겹친 구간의 평행선 간격은 화면 픽셀 기준이라 줌마다 다시 그림
   // 테마가 바뀌면 지도 색을 다시 칠함
   try { matchMedia("(prefers-color-scheme: dark)").addEventListener("change", () => { drawBase(); drawRoute(); }); } catch {}
   new MutationObserver(() => { drawBase(); drawRoute(); }).observe(document.documentElement, { attributes: true, attributeFilter: ["data-theme"] });
@@ -1174,11 +1176,42 @@ function splitPath(path, fracs) {
   }
   return parts;
 }
+// 같은 길을 여러 번 지나는 구간 찾기: 경로는 보행망 노드 좌표를 그대로 이으므로 겹치는 선분은 좌표가 정확히 같다.
+// 한 번 지나는 선분과 여러 번 지나는 선분(같은 선분은 한 번만)을 이어진 묶음으로 나눈다 → [{n: 지나는 횟수, pts}]
+function passRuns(path) {
+  const key = (a, b) => { const p = a[0].toFixed(6) + "," + a[1].toFixed(6), q = b[0].toFixed(6) + "," + b[1].toFixed(6); return p < q ? p + "|" + q : q + "|" + p; };
+  const cnt = new Map(), keys = [];
+  for (let i = 1; i < path.length; i++) { const k = key(path[i - 1], path[i]); keys.push(k); cnt.set(k, (cnt.get(k) || 0) + 1); }
+  const runs = [], seen = new Set(); let cur = null;
+  keys.forEach((k, j) => {
+    const n = cnt.get(k), a = path[j], b = path[j + 1];
+    if (n > 1 && seen.has(k)) { cur = null; return; }
+    seen.add(k);
+    if (cur && cur.n === n && cur.pts[cur.pts.length - 1] === a) cur.pts.push(b);
+    else { cur = { n, pts: [a, b] }; runs.push(cur); }
+  });
+  return runs;
+}
+// 선을 화면에서 px만큼 옆으로 민 좌표 (꺾이는 점은 양쪽 법선의 평균 방향, 너무 길어지지 않게 제한)
+function offsetLine(pts, px) {
+  if (!px) return pts;
+  const P = pts.map(p => map.latLngToLayerPoint(p));
+  const nrm = (a, b) => { const dx = b.x - a.x, dy = b.y - a.y, l = Math.hypot(dx, dy) || 1; return [-dy / l, dx / l]; };
+  return P.map((p, i) => {
+    const n1 = i > 0 ? nrm(P[i - 1], p) : null, n2 = i < P.length - 1 ? nrm(p, P[i + 1]) : null;
+    let [nx, ny] = n1 && n2 ? [n1[0] + n2[0], n1[1] + n2[1]] : (n1 || n2);
+    const l = Math.hypot(nx, ny) || 1; nx /= l; ny /= l;
+    const k = n1 && n2 ? Math.min(2, 1 / Math.max(0.5, nx * n1[0] + ny * n1[1])) : 1;
+    return map.layerPointToLatLng(L.point(p.x + nx * px * k, p.y + ny * px * k));
+  });
+}
+const DUP = { gap: 3.5, weight: 2.5, max: 3 };   // 겹친 구간: 지나는 횟수만큼(최대 3줄) 얇은 선을 나란히
 function drawRoute(fit = false) {
   if (!routeLayer) return;
   routeLayer.clearLayers();
   const r = results[selected];
   const same = samePlace();
+  let dupShown = false;
   if (r && r.path) {
     const ll = r.path;
     L.polyline(ll, { color: "#ffffff", weight: 9, opacity: 0.9, lineJoin: "round", interactive: false }).addTo(routeLayer);
@@ -1186,7 +1219,15 @@ function drawRoute(fit = false) {
       const col = { w: css("--muted"), f: css("--route"), e: css("--start") };
       splitPath(ll, r.ivl.segs.map(([, m, v]) => v * m / 60 / r.ivl.km)).forEach((part, i) =>
         L.polyline(part, { color: col[r.ivl.segs[i][0]], weight: r.ivl.segs[i][0] === "w" ? 4 : 5.5, dashArray: r.ivl.segs[i][0] === "w" ? "7 6" : null, opacity: 0.95, lineJoin: "round", interactive: false }).addTo(routeLayer));
-    } else L.polyline(ll, { color: css("--route"), weight: 5, opacity: 0.95, lineJoin: "round", interactive: false }).addTo(routeLayer);
+    } else {
+      const runs = passRuns(ll);
+      for (const run of runs) {
+        if (run.n === 1) { L.polyline(run.pts, { color: css("--route"), weight: 5, opacity: 0.95, lineJoin: "round", interactive: false }).addTo(routeLayer); continue; }
+        const m = Math.min(run.n, DUP.max);
+        for (let j = 0; j < m; j++) L.polyline(offsetLine(run.pts, (j - (m - 1) / 2) * DUP.gap), { color: css("--route2"), weight: DUP.weight, opacity: 0.95, lineJoin: "round", interactive: false }).addTo(routeLayer);
+      }
+      dupShown = runs.some(x => x.n > 1);
+    }
     const c = r.c;
     // 반환점은 출발지로 돌아오는 코스에서만 표시
     if (same && c.turn) L.marker(c.turn, { interactive: false, keyboard: false, zIndexOffset: 500,
@@ -1194,6 +1235,7 @@ function drawRoute(fit = false) {
     if (fit) map.fitBounds(L.latLngBounds([...ll, input.start.at, input.dest.at]), { padding: [40, 40], maxZoom: 16.5 });
   }
   $("lgIvl").hidden = !(r && r.ivl); $("lgRoute").hidden = !!(r && r.ivl);
+  $("lgDup").hidden = !dupShown;
   if (!same) L.marker(input.dest.at, { icon: pinIcon("도착", "dest"), interactive: false }).addTo(routeLayer);
   L.marker(input.start.at, { icon: pinIcon(same ? "출발·도착" : "출발", ""), interactive: false }).addTo(routeLayer);
 }
