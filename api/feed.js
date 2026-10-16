@@ -1,5 +1,5 @@
 // 커뮤니티 피드 (보기는 누구나, 좋아요는 로그인한 사용자만)
-// GET /api/feed?offset=0 → { posts: [{id, nickname, date, courseName, min, km, kcal, difficulty, pace, likes, liked, comments, mine}], next }
+// GET /api/feed?offset=0 → { posts: [{id, nickname, date, courseName, content, min, km, kcal, difficulty, pace, likes, liked, comments, mine}], next }
 // POST /api/feed {id} → 좋아요 토글 { liked, likes }
 const L = require("./_lib");
 
@@ -18,7 +18,7 @@ module.exports = L.handler({
       const [raw, likes, liked, comments] = out.slice(i * 4, i * 4 + 4);
       if (!raw) return;
       const p = JSON.parse(raw);
-      posts.push({ id: p.id, nickname: p.nickname, date: p.date, courseName: p.courseName, min: p.min, km: p.km, kcal: p.kcal,
+      posts.push({ id: p.id, nickname: p.nickname, date: p.date, courseName: p.courseName, content: p.content || "", min: p.min, km: p.km, kcal: p.kcal,
         difficulty: p.difficulty, pace: p.pace, likes: likes || 0, liked: !!liked, comments: comments || 0, mine: !!user && p.uid === user.id });
     });
     res.status(200).json({ posts, next: ids.length === PAGE ? offset + PAGE : null });

@@ -247,3 +247,46 @@ test("비로그인: 랭킹·피드·댓글은 읽기만 가능, 좋아요·댓�
   assert.equal((await call("comments", "PATCH", { body: { id, cid: cm.json.comments[0].id } })).status, 401);
   assert.equal((await call("comments", "DELETE", { query: { id, cid: cm.json.comments[0].id } })).status, 401);
 });
+
+test("공유 시 게시물 내용: 저장·표시, 500자 초과는 거절, 내용 없이도 공유 가능", async () => {
+  const a = (await call("signup", "POST", { body: { nickname: "내용에이", password: "pass1234" } })).cookie;
+  const add = async () => (await call("workouts", "POST", { cookie: a, body: { date: "2026-02-01", courseName: "코스", min: 30, km: 3, kcal: 100 } })).json.workouts[0].id;
+  const [x, y, z] = [await add(), await add(), await add()];
+  const share = (id, body) => call("workouts", "PATCH", { cookie: a, query: { id }, body: { shared: true, ...body } });
+  assert.equal((await share(x, { content: "  오늘 공원 좋았어요!\n바람이 시원  " })).status, 200);
+  assert.equal((await share(y, {})).status, 200, "내용 없이도 공유");
+  assert.equal((await share(z, { content: "가".repeat(501) })).status, 400, "501자는 거절");
+  assert.equal((await share(z, { content: "가".repeat(500) })).status, 200, "500자는 허용");
+  const posts = (await call("feed", "GET", {})).json.posts;
+  const byId = id => posts.find(p => p.id === id);
+  assert.equal(byId(x).content, "오늘 공원 좋았어요!\n바람이 시원", "앞뒤 공백 제거, 줄바꿈 유지");
+  assert.equal(byId(y).content, "");
+  assert.equal(byId(z).content.length, 500);
+});
+
+test("게시물 내용 수정: 공유 중인 글의 내용만 바뀌고, 내용 없이 다시 공유해도 유지, 남의 글·미공유 글은 수정 불가", async () => {
+  const mk = async nick => (await call("signup", "POST", { body: { nickname: nick, password: "pass1234" } })).cookie;
+  const [a, b] = [await mk("수정에이"), await mk("수정비이")];
+  const id = (await call("workouts", "POST", { cookie: a, body: { date: "2026-02-02", courseName: "코스", min: 30, km: 3, kcal: 100 } })).json.workouts[0].id;
+  const patch = (cookie, body) => call("workouts", "PATCH", { cookie, query: { id }, body });
+  const content = async () => (await call("feed", "GET", {})).json.posts.find(p => p.id === id)?.content;
+
+  await patch(a, { shared: true, content: "처음 글" });
+  assert.equal(await content(), "처음 글");
+  await patch(a, { shared: true, content: "  수정한 글  " });
+  assert.equal(await content(), "수정한 글", "내용 수정");
+  await patch(a, { shared: true });
+  assert.equal(await content(), "수정한 글", "content 없이 다시 공유해도 유지");
+  assert.equal((await patch(a, { shared: true, content: "가".repeat(501) })).status, 400);
+  assert.equal(await content(), "수정한 글", "거절되면 그대로");
+  await patch(a, { shared: true, content: "" });
+  assert.equal(await content(), "", "내용 비우기");
+  const feed = (await call("feed", "GET", { cookie: a })).json.posts;
+  assert.equal((await call("feed", "GET", {})).json.posts.filter(p => p.id === id).length, 1, "수정해도 피드에 중복되지 않음");
+  assert.ok(feed.find(p => p.id === id).mine);
+  assert.equal((await patch(b, { shared: true, content: "해킹" })).status, 404, "남의 기록은 수정 불가");
+  assert.equal(await content(), "");
+  await patch(a, { shared: false });
+  await patch(a, { shared: true, content: "다시 공유" });
+  assert.equal(await content(), "다시 공유", "해제 후 재공유는 새 내용");
+});

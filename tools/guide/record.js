@@ -177,8 +177,10 @@ const INJECT = `(() => {
   await scrollY(0);
   await tap("#tab-log", 2000);
   await scrollTo("#logtable", "center"); await wait(1200);
-  cap("기록 · 배지", "공유를 누르면 커뮤니티에 올라가요");
-  await tap("#logtable .sharebtn", 1800);
+  cap("기록 · 배지", "공유를 누르고 한마디를 남기면\n커뮤니티에 올라가요");
+  await tap("#logtable .sharebtn", 900);
+  await type("#shareText", "센트럴파크 바람 좋았어요!");
+  await tap("#shareSubmit", 1800);
 
   /* ---- 5. 커뮤니티 ---- */
   cap("커뮤니티", "다른 러너의 기록에 좋아요와 댓글로 응원해요");

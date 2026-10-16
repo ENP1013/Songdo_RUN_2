@@ -1,11 +1,13 @@
 // 내 운동 기록 (본인 것만)
 // GET    /api/workouts           → { workouts: [...] }
 // POST   /api/workouts  {기록} 또는 {workouts: [기록...]} (기기 기록 옮기기, 최대 200개)
+// PATCH  /api/workouts?id=...  { shared: true|false, content? } → 커뮤니티에 공유(게시물 내용 최대 500자)/해제. 공유 중인 글에 content를 보내면 내용 수정
 // DELETE /api/workouts?id=...
 const crypto = require("crypto");
 const L = require("./_lib");
 
 const MAX = 1000;
+const MAX_CONTENT = 500;
 const DIFFS = new Set(["flat", "hill", "interval"]);
 const PACES = new Set(["walk", "jog", "run"]);
 
@@ -62,10 +64,15 @@ module.exports = L.handler({
     const w = all.map(s => JSON.parse(s)).find(x => x.id === id);
     if (!w) throw new L.HttpError(404, "기록을 찾지 못했어요");
     if (body.shared) {
-      const post = { id, uid: user.id, nickname: user.nickname, date: w.date, courseName: w.courseName,
+      const content = typeof body.content === "string" ? body.content.trim() : "";   // 게시물 내용(선택)
+      if (content.length > MAX_CONTENT) throw new L.HttpError(400, `게시물 내용은 ${MAX_CONTENT}자까지 쓸 수 있어요`);
+      const post = { id, uid: user.id, nickname: user.nickname, date: w.date, courseName: w.courseName, content,
         min: w.min, km: w.km, kcal: w.kcal, difficulty: w.difficulty, pace: w.pace, sharedAt: new Date().toISOString() };
       if (await L.redis("SADD", `shared:${user.id}`, id)) {   // 이미 공유 중이면 피드에 중복으로 올리지 않음
         await L.pipeline([["SET", `post:${id}`, JSON.stringify(post)], ["LPUSH", "feed", id], ["LTRIM", "feed", 0, 999]]);
+      } else if (typeof body.content === "string") {   // 이미 공유 중인 게시물에 content를 보내면 내용만 수정 (content 없이 다시 공유해도 기존 내용 유지)
+        const raw = await L.redis("GET", `post:${id}`);
+        if (raw) await L.redis("SET", `post:${id}`, JSON.stringify({ ...JSON.parse(raw), content }));
       }
     } else await unshare(user, id);
     res.status(200).json({ ok: true, shared: !!body.shared });
