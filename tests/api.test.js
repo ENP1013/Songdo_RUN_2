@@ -186,3 +186,37 @@ test("랭킹: 집계 도입 전 기록·누락된 점수도 모든 사용자 기
   assert.equal(r.me.km, 3.5, "내 모든 기록 합산");
   assert.equal(r.rows.find(x => x.nickname === "복구비이").km, 4, "다른 사용자 기록도 합산");
 });
+
+test("댓글: 좋아요 토글, 대댓글(답글의 답글은 같은 묶음), 부모 삭제 시 답글도 삭제", async () => {
+  const mk = async nick => (await call("signup", "POST", { body: { nickname: nick, password: "1234" } })).cookie;
+  const [a, b, c] = [await mk("댓글에이"), await mk("댓글비이"), await mk("댓글씨이")];
+  const w = await call("workouts", "POST", { cookie: a, body: { date: "2026-01-05", courseName: "코스", min: 30, km: 3, kcal: 100 } });
+  const id = w.json.workouts[0].id;
+  await call("workouts", "PATCH", { cookie: a, query: { id }, body: { shared: true } });
+  const cmt = (cookie, body) => call("comments", "POST", { cookie, body: { id, ...body } });
+  const top = (await cmt(b, { text: "좋은 코스네요" })).json.comment;
+  assert.equal(top.parent, null);
+
+  const like = (cookie, cid) => call("comments", "PATCH", { cookie, body: { id, cid } });
+  assert.deepEqual([(await like(a, top.id)).json.liked, (await like(a, top.id)).json.liked], [true, false], "다시 누르면 취소");
+  await like(a, top.id); await like(c, top.id);
+  assert.equal((await like(null, top.id)).status, 401);
+  assert.equal((await like(a, "00000000-0000-0000-0000-000000000000")).status, 404);
+
+  const r1 = (await cmt(a, { text: "감사해요", parent: top.id })).json.comment;
+  assert.equal(r1.parent, top.id); assert.equal(r1.replyTo, "댓글비이");
+  const r2 = (await cmt(c, { text: "저도요", parent: r1.id })).json.comment;   // 답글의 답글 → 같은 최상위 댓글 아래
+  assert.equal(r2.parent, top.id); assert.equal(r2.replyTo, "댓글에이");
+  assert.equal((await cmt(c, { text: "x", parent: "00000000-0000-0000-0000-000000000000" })).status, 404, "없는 댓글에는 답글 불가");
+
+  const list = (await call("comments", "GET", { cookie: c, query: { id } })).json.comments;
+  const t = list.find(x => x.id === top.id);
+  assert.deepEqual([t.likes, t.liked], [2, true]);
+  assert.equal(list.length, 3);
+  assert.equal((await call("feed", "GET", { cookie: b })).json.posts[0].comments, 3);
+
+  assert.equal((await call("comments", "DELETE", { cookie: c, query: { id, cid: top.id } })).status, 403);
+  assert.equal((await call("comments", "DELETE", { cookie: b, query: { id, cid: top.id } })).status, 200);
+  assert.equal((await call("comments", "GET", { cookie: b, query: { id } })).json.comments.length, 0, "부모를 지우면 답글도 삭제");
+  assert.ok(![...kv.keys()].some(k => k.startsWith("clikes:" + top.id)), "좋아요 키도 정리");
+});
