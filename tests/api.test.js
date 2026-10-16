@@ -290,3 +290,32 @@ test("게시물 내용 수정: 공유 중인 글의 내용만 바뀌고, 내용 
   await patch(a, { shared: true, content: "다시 공유" });
   assert.equal(await content(), "다시 공유", "해제 후 재공유는 새 내용");
 });
+
+test("운동 경로: 저장·좌표 반올림, 목록엔 hasRoute만, id 조회로 경로 반환, 형식 오류는 경로만 버림, 남의 경로 조회 불가", async () => {
+  const mk = async nick => (await call("signup", "POST", { body: { nickname: nick, password: "pass1234" } })).cookie;
+  const [a, b] = [await mk("경로에이"), await mk("경로비이")];
+  const rec = extra => ({ date: "2026-03-01", courseName: "코스", min: 30, km: 3, kcal: 100, ...extra });
+  const post = (cookie, extra) => call("workouts", "POST", { cookie, body: rec(extra) });
+
+  const ok = await post(a, { route: [[[37.390001234, 126.640009876], [37.4, 126.65]], [[37.41, 126.66], [37.42, 126.67]]] });
+  assert.equal(ok.status, 201);
+  assert.equal(ok.json.workouts[0].hasRoute, true); assert.ok(!("route" in ok.json.workouts[0]), "응답엔 경로 본문 없음");
+  const id = ok.json.workouts[0].id;
+
+  const list = (await call("workouts", "GET", { cookie: a })).json.workouts;
+  assert.equal(list[0].hasRoute, true); assert.ok(!("route" in list[0]), "목록엔 경로 본문 없음");
+
+  const got = (await call("workouts", "GET", { cookie: a, query: { id } })).json.route;
+  assert.deepEqual(got[0][0], [37.39, 126.64001], "소수 5자리로 반올림");
+  assert.equal(got.length, 2, "구간(일시정지) 유지");
+  assert.equal((await call("workouts", "GET", { cookie: b, query: { id } })).status, 404, "남의 경로는 조회 불가");
+
+  for (const bad of ["문자열", [[[91, 0], [0, 0]]], [[["a", 1], [2, 3]]], [Array.from({ length: 201 }, (_, i) => [37 + i / 1e4, 126])], Array.from({ length: 21 }, () => [[1, 1], [2, 2]])]) {
+    const r = await post(a, { route: bad });
+    assert.equal(r.status, 201, "경로가 이상해도 기록은 저장");
+    assert.equal(r.json.workouts[0].hasRoute, false);
+  }
+  const none = await post(a, {});
+  assert.equal(none.json.workouts[0].hasRoute, false);
+  assert.equal((await call("workouts", "GET", { cookie: a, query: { id: none.json.workouts[0].id } })).json.route, null);
+});

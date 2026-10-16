@@ -1,5 +1,6 @@
 // 내 운동 기록 (본인 것만)
-// GET    /api/workouts           → { workouts: [...] }
+// GET    /api/workouts           → { workouts: [...] }  (경로는 용량이 커서 목록엔 hasRoute만, 경로 자체는 아래 id 조회)
+// GET    /api/workouts?id=...    → { route: [[[lat,lng],...], ...] | null }  (내 기록의 운동 경로, 구간 배열)
 // POST   /api/workouts  {기록} 또는 {workouts: [기록...]} (기기 기록 옮기기, 최대 200개)
 // PATCH  /api/workouts?id=...  { shared: true|false, content? } → 커뮤니티에 공유(게시물 내용 최대 500자)/해제. 공유 중인 글에 content를 보내면 내용 수정
 // DELETE /api/workouts?id=...
@@ -11,6 +12,24 @@ const MAX_CONTENT = 500;
 const DIFFS = new Set(["flat", "hill", "interval"]);
 const PACES = new Set(["walk", "jog", "run"]);
 
+// 운동 경로: 구간(일시정지로 끊긴 선)의 배열. 좌표는 소수 5자리(약 1m), 전체 200점 이하만 받고 형식이 틀리면 경로만 버린다
+function cleanRoute(v) {
+  if (!Array.isArray(v) || v.length > 20) return undefined;
+  const segs = []; let n = 0;
+  for (const seg of v) {
+    if (!Array.isArray(seg) || seg.length < 2) continue;
+    const pts = [];
+    for (const p of seg) {
+      if (!Array.isArray(p) || typeof p[0] !== "number" || typeof p[1] !== "number" || !(Math.abs(p[0]) <= 90) || !(Math.abs(p[1]) <= 180)) return undefined;
+      if (++n > 200) return undefined;
+      pts.push([Math.round(p[0] * 1e5) / 1e5, Math.round(p[1] * 1e5) / 1e5]);
+    }
+    segs.push(pts);
+  }
+  return segs.length ? segs : undefined;
+}
+const brief = ({ route, ...w }) => ({ ...w, hasRoute: !!route });   // 목록·응답에는 경로 대신 유무만
+
 function clean(w) {
   const num = (v, lo, hi) => Number.isFinite(+v) && +v >= lo && +v <= hi;
   if (!w || typeof w !== "object") return null;
@@ -21,14 +40,14 @@ function clean(w) {
     id: crypto.randomUUID(), date: w.date, courseName: w.courseName.trim(),
     min: Math.round(+w.min), km: Math.round(+w.km * 100) / 100, kcal: Math.round(+w.kcal),
     difficulty: DIFFS.has(w.difficulty) ? w.difficulty : "flat", pace: PACES.has(w.pace) ? w.pace : "jog",
-    savedAt: new Date().toISOString(),
+    savedAt: new Date().toISOString(), route: cleanRoute(w.route),
   };
 }
 const listKey = u => `workouts:${u.id}`;
 async function list(user) {
   const [rows, shared] = await L.pipeline([["LRANGE", listKey(user), 0, -1], ["SMEMBERS", `shared:${user.id}`]]);
   const set = new Set(shared || []);
-  return (rows || []).map(s => { const w = JSON.parse(s); w.shared = set.has(w.id); return w; });
+  return (rows || []).map(s => { const w = brief(JSON.parse(s)); w.shared = set.has(w.id); return w; });
 }
 
 // 커뮤니티 피드에서 내리기 (게시물·좋아요·댓글 삭제)
@@ -41,6 +60,12 @@ async function unshare(user, id) {
 module.exports = L.handler({
   async GET(req, res) {
     const user = await L.requireUser(req);
+    const id = String(req.query?.id || new URL(req.url, "http://x").searchParams.get("id") || "");
+    if (id) {
+      const w = ((await L.redis("LRANGE", listKey(user), 0, -1)) || []).map(s => JSON.parse(s)).find(x => x.id === id);
+      if (!w) throw new L.HttpError(404, "기록을 찾지 못했어요");
+      return res.status(200).json({ route: w.route || null });
+    }
     res.status(200).json({ workouts: await list(user) });
   },
   async POST(req, res, body) {
@@ -53,7 +78,7 @@ module.exports = L.handler({
     if (count + rows.length > MAX) throw new L.HttpError(400, `기록은 최대 ${MAX}개까지 저장할 수 있어요`);
     await L.redis("RPUSH", listKey(user), ...rows.map(r => JSON.stringify(r)));
     await L.pipeline(rows.flatMap(r => L.rankCmds(r.date, r.km, user.nickname)));
-    res.status(201).json({ workouts: rows });
+    res.status(201).json({ workouts: rows.map(brief) });
   },
   // PATCH /api/workouts?id=...  { shared: true|false } → 커뮤니티에 공유/공유 해제
   async PATCH(req, res, body) {

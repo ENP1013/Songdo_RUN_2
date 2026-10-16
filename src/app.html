@@ -255,6 +255,12 @@ table.log td.n{font-family:var(--f-num);text-align:right;white-space:nowrap}
 .topbar{display:flex;gap:8px;align-items:center;flex-wrap:wrap}
 .acct{border:1px solid var(--line);background:var(--surface);border-radius:999px;padding:7px 14px;font-weight:600;cursor:pointer;max-width:200px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .acct.on{border-color:var(--accent);color:var(--accent)}
+dialog#routeDlg{border:1px solid var(--line);border-radius:var(--r);background:var(--surface);color:var(--ink);padding:0;width:min(560px,calc(100vw - 32px))}
+dialog#routeDlg::backdrop{background:rgba(0,0,0,.35)}
+#routeBox{padding:18px;display:flex;flex-direction:column;gap:12px}
+#routeMap{height:min(60vh,380px);border-radius:10px;overflow:hidden;background:var(--map-land)}
+tr.has-route{cursor:pointer}
+tr.has-route:hover td{background:var(--sunk)}
 dialog#authDlg,dialog#shareDlg{border:1px solid var(--line);border-radius:var(--r);background:var(--surface);color:var(--ink);padding:0;width:min(380px,calc(100vw - 32px))}
 dialog#authDlg::backdrop,dialog#shareDlg::backdrop{background:rgba(0,0,0,.35)}
 .guide-btn{margin-top:8px;border:1px solid var(--line);background:var(--surface);color:var(--ink);border-radius:999px;padding:6px 14px;font-weight:600;font-size:13px;cursor:pointer}
@@ -565,6 +571,14 @@ body.running{overflow:hidden}
       <button type="button" class="btn" id="logoutBtn">로그아웃</button>
     </div>
   </form>
+</dialog>
+<dialog id="routeDlg" aria-labelledby="routeTitle">
+  <div id="routeBox">
+    <div class="dlg-head"><h2 id="routeTitle"></h2><button type="button" class="x" id="routeClose" aria-label="닫기">×</button></div>
+    <p class="hint" id="routeSub" style="margin:0"></p>
+    <div id="routeMap" role="img" aria-label="운동 경로 지도"></div>
+    <p class="hint" style="margin:0"><span style="color:var(--start)">●</span> 출발 <span style="color:var(--dest)">●</span> 도착</p>
+  </div>
 </dialog>
 <dialog id="shareDlg" aria-labelledby="shareTitle">
   <form id="shareForm" method="dialog" novalidate>
@@ -1080,14 +1094,21 @@ function stats(recs) {
 }
 function earned(recs) { const s = stats(recs); return BADGES.filter(b => b.test(s)).map(b => b.id); }
 
-function addRecord(r) {
+// 운동 경로 저장용으로 줄이기: 구간별 [[lat,lng],...] → 소수 5자리, 전체 160점 안쪽으로 솎아냄(구간의 처음·끝은 유지)
+function packRoute(segs) {
+  const parts = (segs || []).filter(s => s && s.length > 1), total = parts.reduce((a, s) => a + s.length, 0);
+  if (!total) return undefined;
+  const step = Math.max(1, Math.ceil(total / 160)), r5 = v => Math.round(v * 1e5) / 1e5;
+  return parts.slice(0, 20).map(s => s.filter((_, i) => i % step === 0 || i === s.length - 1).map(p => [r5(p[0]), r5(p[1])]));
+}
+function addRecord(r) {   // 코스 추천에서 완료 기록하기: 실제로 이동한 길이 아니므로 경로는 저장하지 않음(경로는 실시간 기록만)
   return saveRecord({ courseName: r.name, min: r.min, km: +r.km.toFixed(2), kcal: Math.round(r.kcal), difficulty: input.difficulty, pace: input.pace });
 }
 async function saveRecord(fields) {   // 저장하면 true
   const before = new Set(earned(records));
   const rec = { id: String(Date.now()), date: dayKey(new Date()), ...fields };
   if (Account.user) {
-    try { const j = await Account.api("POST", "/api/workouts", rec); records = [...records, ...j.workouts]; }
+    try { const j = await Account.api("POST", "/api/workouts", rec); records = [...records, ...j.workouts.map(w => ({ ...w, route: rec.route }))]; }
     catch (e) { toast(e.message || "기록을 저장하지 못했어요"); return false; }
   } else {
     records = [...records, rec];
@@ -1109,6 +1130,30 @@ async function removeRecord(id) {
 }
 
 // 공유할 때는 게시물 내용을 쓰는 창을 먼저 띄우고(비워도 됨), 공유 해제는 바로 처리
+// 내 기록의 운동 경로를 지도 위에 그려서 보여주기
+let routeMap = null;
+async function showRoute(id) {
+  const r = records.find(x => String(x.id) === id); if (!r) return;
+  if (!r.route && r.hasRoute) {   // 계정 기록은 경로를 따로 불러옴(목록은 가볍게 유지)
+    try { r.route = (await Account.api("GET", `/api/workouts?id=${encodeURIComponent(id)}`)).route; } catch (e) { toast(e.message || "경로를 불러오지 못했어요"); return; }
+  }
+  const segs = (r.route || []).filter(s => s.length > 1);
+  if (!segs.length) return toast("이 기록에는 경로 정보가 없어요");
+  $("routeTitle").textContent = r.courseName;
+  $("routeSub").textContent = `${r.date} · ${fmtKm(r.km)} · ${fmtMin(r.min)} · ${fmtKcal(r.kcal)}`;
+  if (!$("routeDlg").open) $("routeDlg").showModal();
+  if (routeMap) routeMap.remove();
+  routeMap = L.map("routeMap", { zoomSnap: 0.5, maxZoom: 18, attributionControl: true });
+  routeMap.attributionControl.setPrefix(false).addAttribution("© OpenStreetMap 기여자");
+  L.tileLayer("https://tile.openstreetmap.org/{z}/{x}/{y}.png", { maxZoom: 19, crossOrigin: true }).addTo(routeMap);
+  segs.forEach(s => L.polyline(s, { color: "#ffffff", weight: 9, opacity: 0.9, lineJoin: "round", interactive: false }).addTo(routeMap));
+  segs.forEach(s => L.polyline(s, { color: css("--route"), weight: 5, opacity: 0.95, lineJoin: "round", interactive: false }).addTo(routeMap));
+  const first = segs[0][0], lastSeg = segs[segs.length - 1], last = lastSeg[lastSeg.length - 1];
+  const dot = (p, color) => L.circleMarker(p, { radius: 7, color: "#fff", weight: 3, fillColor: color, fillOpacity: 1, interactive: false }).addTo(routeMap);
+  dot(first, css("--start")); dot(last, css("--dest"));
+  routeMap.fitBounds(L.latLngBounds(segs.flat()), { padding: [30, 30], maxZoom: 17 });
+  setTimeout(() => routeMap && routeMap.invalidateSize(), 50);
+}
 function openShareDlg({ id, mode, summary, text = "" }) {   // mode: "new"(공유) | "edit"(게시물 수정)
   $("shareTitle").textContent = mode === "edit" ? "게시물 수정" : "커뮤니티에 공유";
   $("shareSubmit").textContent = mode === "edit" ? "수정하기" : "공유하기";
@@ -1267,14 +1312,15 @@ function renderLog() {
   </svg>`;
   const recent = [...records].reverse().slice(0, 12);
   $("logtable").innerHTML = recent.length ? `<table class="log"><thead><tr><th>날짜</th><th>코스</th><th style="text-align:right">시간</th><th style="text-align:right">거리</th><th style="text-align:right">칼로리</th>${Account.user ? "<th></th>" : ""}<th></th></tr></thead><tbody>
-    ${recent.map(r => `<tr><td class="num">${r.date.slice(5)}</td><td>${esc(r.courseName)} ${r.difficulty === "interval" ? diffBadge("interval") : ""}</td>
+    ${recent.map(r => `<tr${r.route || r.hasRoute ? ` class="has-route" data-route="${r.id}" title="누르면 운동 경로를 지도로 볼 수 있어요"` : ""}><td class="num">${r.date.slice(5)}</td><td>${esc(r.courseName)} ${r.difficulty === "interval" ? diffBadge("interval") : ""}</td>
       <td class="n">${fmtMin(r.min)}</td><td class="n">${fmtKm(r.km)}</td><td class="n">${fmtKcal(r.kcal)}</td>
       ${Account.user ? `<td><button class="sharebtn" data-share="${r.id}" aria-pressed="${!!r.shared}">${r.shared ? "공유 중" : "공유"}</button></td>` : ""}
       <td><button class="x" data-id="${r.id}" aria-label="기록 삭제">×</button></td></tr>`).join("")}</tbody></table>`
     : `<div class="empty">아직 기록이 없어요. 코스 추천 탭에서 코스를 고르고 <b>완료 기록하기</b>를 누르면 여기에 쌓입니다.</div>`;
   $("logtable").onclick = e => {
     const b = e.target.closest(".x"); if (b) return removeRecord(b.dataset.id);
-    const sh = e.target.closest(".sharebtn"); if (sh) toggleShare(sh.dataset.share);
+    const sh = e.target.closest(".sharebtn"); if (sh) return toggleShare(sh.dataset.share);
+    const row = e.target.closest("tr[data-route]"); if (row) showRoute(row.dataset.route);
   };
   renderRoutine();
   const got = new Set(earned(records));
@@ -1512,7 +1558,7 @@ const Run = {
     const x = this.stats();
     if (x.min < 1) { toast("1분 미만이라 저장하지 않았어요"); return this.end(); }
     const ok = await saveRecord({ courseName: s.name, min: Math.round(x.min), km: +x.km.toFixed(2), kcal: Math.round(x.kcal),
-      difficulty: s.difficulty, pace: x.kmh < 6.5 ? "walk" : x.kmh < 9 ? "jog" : "run" });
+      difficulty: s.difficulty, pace: x.kmh < 6.5 ? "walk" : x.kmh < 9 ? "jog" : "run", route: packRoute(s.trail) });
     if (!ok) return;
     const sum = { name: s.name, x, splits: s.splits.slice(), m: s.m };
     this.stop();
@@ -1696,6 +1742,9 @@ update(true);
 Account.wire();
 Feed.wire();
 Rank.wire();
+$("routeClose").onclick = () => $("routeDlg").close();
+$("routeDlg").addEventListener("close", () => { if (routeMap) { routeMap.remove(); routeMap = null; } });
+$("routeDlg").addEventListener("click", e => { if (e.target === $("routeDlg")) $("routeDlg").close(); });   // 바깥을 눌러도 닫힘
 $("shareClose").onclick = () => $("shareDlg").close();
 $("shareText").oninput = () => { $("shareCnt").textContent = `${$("shareText").value.length}/500`; };
 $("shareForm").onsubmit = async e => {
