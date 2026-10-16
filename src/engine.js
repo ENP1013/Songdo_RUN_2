@@ -178,7 +178,16 @@ const Engine = (() => {
     }
     return { nodes, m };
   }
-  const toPath = nodes => nodes.map(i => [lat[i], lon[i]]);
+  // 30 m도 안 되는 막다른 가지에 들어갔다 바로 나오는 A→X→A는 걷는 의미가 없고 갈림길만 헷갈리게 하므로 A로 줄인다
+  const toPath = nodes => {
+    const out = [];
+    for (const i of nodes) {
+      out.push(i);
+      const n = out.length;
+      if (n >= 3 && out[n - 1] === out[n - 3] && distM([lat[out[n - 2]], lon[out[n - 2]]], [lat[i], lon[i]]) < 30) out.length = n - 2;
+    }
+    return out.map(i => [lat[i], lon[i]]);
+  };
 
   /* ---------- 코스 분석 ---------- */
   function analyze(path) {

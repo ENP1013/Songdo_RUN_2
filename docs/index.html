@@ -142,6 +142,8 @@ select,textarea,input[type=number],input[type=text]{background:var(--bg);border:
 .pickbar .seg button{padding:6px 12px;font-size:13px}
 .pickbar .say{font-size:12.5px;background:color-mix(in srgb,var(--surface) 92%,transparent);padding:5px 10px;border-radius:7px;color:var(--muted);box-shadow:0 1px 4px rgba(0,0,0,.12)}
 .turn-label{background:var(--ink);color:var(--bg);border-radius:6px;font:700 11.5px/1 var(--f-body);padding:4px 7px;white-space:nowrap;position:absolute;left:0;top:-10px;transform:translate(-50%,-100%);box-shadow:0 1px 4px rgba(0,0,0,.3)}
+.jarrow{position:absolute;left:-9px;top:-9px;width:18px;height:18px;overflow:visible;filter:drop-shadow(0 0 1px rgba(0,0,0,.5))}
+.jarrow path{stroke:#fff;stroke-width:2.4;stroke-linejoin:round;paint-order:stroke}
 .turn-dot{width:12px;height:12px;border-radius:2px;background:var(--ink);border:2px solid #fff;position:absolute;left:-6px;top:-6px;transform:rotate(45deg)}
 .pin-label{background:var(--start);color:#fff;border-radius:6px;font:700 12px/1 var(--f-body);padding:5px 8px;white-space:nowrap;box-shadow:0 1px 4px rgba(0,0,0,.3);transform:translate(-50%,-100%);position:absolute;left:0;top:-8px}
 .pin-label.dest{background:var(--dest)}
@@ -451,6 +453,7 @@ body.running{overflow:hidden}
         <div class="maplegend">
           <span id="lgRoute"><i style="background:var(--route)"></i>추천 코스</span>
           <span id="lgDup" hidden><i style="background:linear-gradient(0deg,var(--route) 0 14%,#F28C28 14% 28%,#F2C200 28% 43%,#2E9E4F 43% 57%,#2C6BA8 57% 71%,#3F3FA8 71% 86%,#8E44AD 86%)"></i>여러 번 지나는 구간 (지나는 순서: 빨·주·노·초·파·남·보)</span>
+          <span id="lgArrow" hidden><svg viewBox="0 0 14 14" width="12" height="12" aria-hidden="true" style="vertical-align:-1px"><path d="M2 2.5 L12.5 7 L2 11.5 L4.5 7 Z" fill="var(--ink)"/></svg>갈림길에서 갈 방향 (화살표 색 = 몇 번째로 지날 때)</span>
           <span id="lgIvl" hidden><i style="background:var(--muted)"></i>워밍업·쿨다운 <i style="background:var(--route);margin-left:8px"></i>고강도 <i style="background:var(--start);margin-left:8px"></i>저강도</span>
           <span id="lgRun" hidden><i style="background:var(--volt);outline:2px solid #0A0A0A"></i>내 이동 경로</span>
           <span><i style="background:var(--map-park)"></i>공원</span>
@@ -780,7 +783,16 @@ const Engine = (() => {
     }
     return { nodes, m };
   }
-  const toPath = nodes => nodes.map(i => [lat[i], lon[i]]);
+  // 30 m도 안 되는 막다른 가지에 들어갔다 바로 나오는 A→X→A는 걷는 의미가 없고 갈림길만 헷갈리게 하므로 A로 줄인다
+  const toPath = nodes => {
+    const out = [];
+    for (const i of nodes) {
+      out.push(i);
+      const n = out.length;
+      if (n >= 3 && out[n - 1] === out[n - 3] && distM([lat[out[n - 2]], lon[out[n - 2]]], [lat[i], lon[i]]) < 30) out.length = n - 2;
+    }
+    return out.map(i => [lat[i], lon[i]]);
+  };
 
   /* ---------- 코스 분석 ---------- */
   function analyze(path) {
@@ -1185,10 +1197,11 @@ function splitPath(path, fracs) {
 }
 // 같은 길을 여러 번 지나는 구간 찾기: 경로는 보행망 노드 좌표를 그대로 이으므로 겹치는 선분은 좌표가 정확히 같다.
 // 한 번 지나는 선분과 여러 번 지나는 선분(같은 선분은 한 번만)을 이어진 묶음으로 나눈다 → [{n: 지나는 횟수, pts}]
+const ptKey = a => a[0].toFixed(6) + "," + a[1].toFixed(6);
+const segKey = (a, b) => { const p = ptKey(a), q = ptKey(b); return p < q ? p + "|" + q : q + "|" + p; };
 function passRuns(path) {
-  const key = (a, b) => { const p = a[0].toFixed(6) + "," + a[1].toFixed(6), q = b[0].toFixed(6) + "," + b[1].toFixed(6); return p < q ? p + "|" + q : q + "|" + p; };
   const cnt = new Map(), keys = [];
-  for (let i = 1; i < path.length; i++) { const k = key(path[i - 1], path[i]); keys.push(k); cnt.set(k, (cnt.get(k) || 0) + 1); }
+  for (let i = 1; i < path.length; i++) { const k = segKey(path[i - 1], path[i]); keys.push(k); cnt.set(k, (cnt.get(k) || 0) + 1); }
   const runs = [], seen = new Set(); let cur = null;
   keys.forEach((k, j) => {
     const n = cnt.get(k), a = path[j], b = path[j + 1];
@@ -1215,12 +1228,51 @@ function offsetLine(pts, px) {
 // 겹친 구간: k번째로 지나는 선을 무지개 순서(빨주노초파남보) 색의 얇은 선으로 나란히. 전체 폭은 DUP.width px 안에서 줄 간격을 줄임
 const PASS_COLORS = ["--route", "#F28C28", "#F2C200", "#2E9E4F", "#2C6BA8", "#3F3FA8", "#8E44AD"];
 const DUP = { width: 12, maxGap: 3.5 };
+const passLane = (o, n) => {   // o번째로 지나는(전체 n번) 선분이 그려지는 줄: 색 번호와 옆으로 민 거리(px)
+  if (n === 1) return { j: 0, px: 0 };
+  const m = Math.min(n, PASS_COLORS.length), gap = Math.min(DUP.maxGap, DUP.width / m), j = Math.min(o, m) - 1;
+  return { j, px: (j - (m - 1) / 2) * gap };
+};
+// 분기점(코스 안에서 길이 셋 이상 갈라지는 점)과 출발점에서, 지날 때마다 나가는 방향을 작은 화살표로.
+// 화살표는 그 선분을 몇 번째로 지나는지에 맞춰 같은 색 줄 위에 놓는다 → [{at, to, o, n}]
+function junctionArrows(path) {
+  const deg = new Map(), cnt = new Map(), seen = new Set();
+  for (let i = 1; i < path.length; i++) {
+    const k = segKey(path[i - 1], path[i]); cnt.set(k, (cnt.get(k) || 0) + 1);
+    if (seen.has(k)) continue; seen.add(k);
+    for (const p of [path[i - 1], path[i]]) deg.set(ptKey(p), (deg.get(ptKey(p)) || 0) + 1);
+  }
+  const occ = new Map(), out = [], leaves = new Map();   // 분기점별로 나간 선분 종류: 매번 같은 쪽으로 나가면 헷갈릴 일이 없으니 화살표 생략
+  for (let i = 0; i < path.length - 1; i++) {
+    const k = segKey(path[i], path[i + 1]), o = (occ.get(k) || 0) + 1, pk = ptKey(path[i]); occ.set(k, o);
+    if (deg.get(pk) < (i === 0 ? 2 : 3)) continue;
+    if (!leaves.has(pk)) leaves.set(pk, new Set());
+    leaves.get(pk).add(k);
+    out.push({ at: path[i], to: path[i + 1], o, n: cnt.get(k), pk, start: i === 0 });
+  }
+  return out.filter(a => a.start || leaves.get(a.pk).size > 1);
+}
+const ARROW_PX = 22;   // 분기점에서 화살표까지 거리
+function drawArrows(path, plain) {
+  const arrows = junctionArrows(path);
+  for (const a of arrows) {
+    const p = map.latLngToLayerPoint(a.at), q = map.latLngToLayerPoint(a.to);
+    const dx = q.x - p.x, dy = q.y - p.y, len = Math.hypot(dx, dy); if (len < 1) continue;
+    const ux = dx / len, uy = dy / len, d = Math.min(ARROW_PX, len / 2);
+    const { j, px } = plain ? { j: 0, px: 0 } : passLane(a.o, a.n);
+    const at = map.layerPointToLatLng(L.point(p.x + ux * d - uy * px, p.y + uy * d + ux * px));
+    const color = plain ? css("--ink") : j ? PASS_COLORS[j] : css(PASS_COLORS[0]);
+    L.marker(at, { interactive: false, keyboard: false, zIndexOffset: 400, icon: L.divIcon({ className: "", iconSize: [0, 0],
+      html: `<svg class="jarrow" viewBox="0 0 14 14" style="transform:rotate(${Math.atan2(dy, dx) * 180 / Math.PI}deg)" aria-hidden="true"><path d="M2 2.5 L12.5 7 L2 11.5 L4.5 7 Z" fill="${color}"/></svg>` }) }).addTo(routeLayer);
+  }
+  return arrows.length > 0;
+}
 function drawRoute(fit = false) {
   if (!routeLayer) return;
   routeLayer.clearLayers();
   const r = results[selected];
   const same = samePlace();
-  let dupShown = false;
+  let dupShown = false, arrowShown = false;
   if (r && r.path) {
     const ll = r.path;
     L.polyline(ll, { color: "#ffffff", weight: 9, opacity: 0.9, lineJoin: "round", interactive: false }).addTo(routeLayer);
@@ -1234,10 +1286,11 @@ function drawRoute(fit = false) {
         if (run.n === 1) { L.polyline(run.pts, { color: css("--route"), weight: 5, opacity: 0.95, lineJoin: "round", interactive: false }).addTo(routeLayer); continue; }
         const m = Math.min(run.n, PASS_COLORS.length), gap = Math.min(DUP.maxGap, DUP.width / m);   // 7번째 이후는 보라 한 줄로 묶음
         L.polyline(run.pts, { color: "#ffffff", weight: gap * m + 4, opacity: 0.9, lineJoin: "round", interactive: false }).addTo(routeLayer);
-        for (let j = 0; j < m; j++) L.polyline(offsetLine(run.pts, (j - (m - 1) / 2) * gap), { color: j ? PASS_COLORS[j] : css(PASS_COLORS[0]), weight: Math.max(1.5, gap * 0.8), opacity: 1, lineJoin: "round", interactive: false }).addTo(routeLayer);
+        for (let j = 0; j < m; j++) L.polyline(offsetLine(run.pts, passLane(j + 1, run.n).px), { color: j ? PASS_COLORS[j] : css(PASS_COLORS[0]), weight: Math.max(1.5, gap * 0.8), opacity: 1, lineJoin: "round", interactive: false }).addTo(routeLayer);
       }
       dupShown = runs.some(x => x.n > 1);
     }
+    if (!r.c.infeasible) arrowShown = drawArrows(ll, !!r.ivl);   // 인터벌은 색이 강도를 뜻하므로 화살표는 검정
     const c = r.c;
     // 반환점은 출발지로 돌아오는 코스에서만 표시
     if (same && c.turn) L.marker(c.turn, { interactive: false, keyboard: false, zIndexOffset: 500,
@@ -1245,7 +1298,7 @@ function drawRoute(fit = false) {
     if (fit) map.fitBounds(L.latLngBounds([...ll, input.start.at, input.dest.at]), { padding: [40, 40], maxZoom: 16.5 });
   }
   $("lgIvl").hidden = !(r && r.ivl); $("lgRoute").hidden = !!(r && r.ivl);
-  $("lgDup").hidden = !dupShown;
+  $("lgDup").hidden = !dupShown; $("lgArrow").hidden = !arrowShown;
   if (!same) L.marker(input.dest.at, { icon: pinIcon("도착", "dest"), interactive: false }).addTo(routeLayer);
   L.marker(input.start.at, { icon: pinIcon(same ? "출발·도착" : "출발", ""), interactive: false }).addTo(routeLayer);
 }
