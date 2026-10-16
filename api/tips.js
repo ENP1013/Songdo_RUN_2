@@ -9,7 +9,7 @@ const L = require("./_lib");
 const KIND = { circle: "순환 루프", park: "공원 둘레 반복", detour: "도착지로 가는 우회 코스", out: "갔다가 돌아오는 왕복", hill: "언덕 반복", direct: "최단 경로" };
 const GOALS = { diet: "다이어트(꾸준한 속도와 칼로리)", record: "기록(페이스 전략)", healing: "힐링(공원 풍경과 호흡)" };
 const DIFFS = { flat: "평지", hill: "오르막", interval: "인터벌" };
-const TONES = { mild: "순한맛: 다정하고 따뜻하게 격려하는 말투", spicy: "매운맛: 츤데레 교관처럼 직설적이고 장난스럽게 약 올리듯 자극하는 말투(재미 요소). 단, 욕설·외모/체형/나이 비하·모욕은 절대 금지, 마지막엔 응원으로 마무리" };
+const TONES = { mild: "순한맛: 다정하고 따뜻하게 격려하는 말투", spicy: "매운맛: 건방지고 버릇없는 반말 코치. 비꼬고 약 올리고 한심하다는 듯 깐죽대며 디스하는 말투(재미 요소로 수위를 확실히 높일 것). 대신 놀리는 대상은 게으름·핑계·소파·변명 같은 행동뿐이고, 욕설·외모/체형/나이/직업 비하는 절대 금지, 마지막 한 줄은 삐딱한 츤데레식 응원" };
 const CACHE_SEC = 24 * 3600;
 
 const str = (v, n) => typeof v === "string" ? v.replace(/[\u0000-\u001f\u007f]/g, " ").trim().slice(0, n) : "";
@@ -58,7 +58,7 @@ module.exports = L.handler({
     const apiKey = process.env.OPENAI_API_KEY;
     if (!apiKey) throw new L.HttpError(503, "AI 기능이 아직 설정되지 않았어요");
 
-    const ck = "tips:" + crypto.createHash("sha256").update(JSON.stringify(f)).digest("hex");   // 같은 조건은 하루 동안 재사용(비용 절약)
+    const ck = "tips:" + crypto.createHash("sha256").update(JSON.stringify([f, TONES[f.tone]])).digest("hex");   // 같은 조건은 하루 동안 재사용(비용 절약)
     const hit = await L.redis("GET", ck);
     if (hit) { try { return res.status(200).json({ ...JSON.parse(hit), cached: true }); } catch {} }
 
