@@ -1529,6 +1529,7 @@ function renderResults(fit) {
 
 // 60분 카드 아래 모양 버튼: 처음 보이면 뒤에서 계산(모양마다 0.3~0.6초)해 두고, 그릴 수 있을 때만 켠다
 function shapeButtons() {
+  if (selected !== shapeIdx()) return "";   // 60분 카드를 골랐을 때만
   const btns = Object.entries(SHAPE_EVENTS).map(([shape, ev]) => {
     const key = shapeKey(shape); if (!key) return "";
     const has = Shape.cache.has(key), ok = has && !!Shape.cache.get(key), on = Shape.on === shape;
