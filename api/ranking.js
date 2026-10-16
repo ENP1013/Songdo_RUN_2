@@ -9,6 +9,7 @@ module.exports = L.handler({
     const user = await L.requireUser(req);
     const q = req.query || Object.fromEntries(new URL(req.url, "http://x").searchParams);
     const period = ["day", "week", "month"].includes(q.period) ? q.period : "week";
+    await L.ensureRanking();   // 모든 사용자의 모든 기록을 원본에서 주기적으로 다시 합산
     const key = L.rankKeys(L.todayKst())[period];
     const [flat, myScore, myIdx] = await L.pipeline([["ZREVRANGE", key, 0, TOP - 1, "WITHSCORES"], ["ZSCORE", key, user.nickname], ["ZREVRANK", key, user.nickname]]);
     const rows = [];

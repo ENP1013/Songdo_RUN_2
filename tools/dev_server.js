@@ -22,6 +22,8 @@ if (!process.env.KV_REST_API_URL && !process.env.UPSTASH_REDIS_REST_URL) {
     LPUSH: () => { const l = kv.get(a[0]) || []; l.unshift(a[1]); kv.set(a[0], l); return l.length; },
     LTRIM: () => { kv.set(a[0], (kv.get(a[0]) || []).slice(a[1], a[2] + 1)); return "OK"; },
     ZINCRBY: () => { const z = kv.get(a[0]) || new Map(); z.set(a[2], (z.get(a[2]) || 0) + a[1]); kv.set(a[0], z); return String(z.get(a[2])); },
+    ZADD: () => { const z = kv.get(a[0]) || new Map(); for (let i = 1; i < a.length - 1; i += 2) z.set(a[i + 1], +a[i]); kv.set(a[0], z); return 1; },
+    SCAN: () => { const re = new RegExp("^" + a[2].replace("*", ".*") + "$"); return ["0", [...kv.keys()].filter(k => re.test(k))]; },
     ZSCORE: () => { const v = kv.get(a[0])?.get(a[1]); return v === undefined ? null : String(v); },
     ZREVRANK: () => { const z = kv.get(a[0]); return z?.has(a[1]) ? [...z].sort((x, y) => y[1] - x[1]).findIndex(e => e[0] === a[1]) : null; },
     ZREVRANGE: () => [...(kv.get(a[0]) || [])].sort((x, y) => y[1] - x[1]).slice(a[1], a[2] + 1).flatMap(e => [e[0], String(e[1])]),

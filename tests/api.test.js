@@ -21,6 +21,8 @@ L._setRedis(async (cmd, ...a) => {
     case "ZSCORE": { const v = kv.get(a[0])?.get(a[1]); return v === undefined ? null : String(v); }
     case "ZREVRANK": { const z = kv.get(a[0]); if (!z?.has(a[1])) return null; return [...z].sort((x, y) => y[1] - x[1] || (x[0] < y[0] ? 1 : -1)).findIndex(e => e[0] === a[1]); }
     case "ZREVRANGE": return [...(kv.get(a[0]) || [])].sort((x, y) => y[1] - x[1] || (x[0] < y[0] ? 1 : -1)).slice(a[1], a[2] + 1).flatMap(e => [e[0], String(e[1])]);
+    case "ZADD": { const z = kv.get(a[0]) || new Map(); for (let i = 1; i < a.length - 1; i += 2) z.set(a[i + 1], +a[i]); kv.set(a[0], z); return 1; }
+    case "SCAN": { const re = new RegExp("^" + a[2].replace("*", ".*") + "$"); return ["0", [...kv.keys()].filter(k => re.test(k))]; }
     case "SCARD": return kv.get(a[0])?.size || 0;
     case "SMEMBERS": return [...(kv.get(a[0]) || [])];
     case "LPUSH": { const l = kv.get(a[0]) || []; l.unshift(a[1]); kv.set(a[0], l); return l.length; }
@@ -171,4 +173,16 @@ test("랭킹: 일·주·월 거리 합산, 동점 같은 순위, 삭제 시 차�
   assert.equal(r.me.km, 1.8, "삭제하면 거리 차감");
   const rk = n => r.rows.find(a => a.nickname === n).rank;
   assert.ok(rk("랭크와이") < rk("랭크엑스"));
+});
+
+test("랭킹: 집계 도입 전 기록·누락된 점수도 모든 사용자 기록에서 자동 복구", async () => {
+  const today = new Date(Date.now() + 9 * 3600e3).toISOString().slice(0, 10);
+  const mk = async nick => (await call("signup", "POST", { body: { nickname: nick, password: "1234" } })).cookie;
+  const [a, b] = [await mk("복구에이"), await mk("복구비이")];
+  const add = (c, km) => call("workouts", "POST", { cookie: c, body: { date: today, courseName: "코스", min: 30, km, kcal: 100 } });
+  await add(a, 2); await add(a, 1.5); await add(b, 4);
+  for (const k of [...kv.keys()]) if (k.startsWith("rank:")) kv.delete(k);   // 점수 유실 상황
+  const r = (await call("ranking", "GET", { cookie: a, query: { period: "day" } })).json;
+  assert.equal(r.me.km, 3.5, "내 모든 기록 합산");
+  assert.equal(r.rows.find(x => x.nickname === "복구비이").km, 4, "다른 사용자 기록도 합산");
 });

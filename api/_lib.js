@@ -101,6 +101,36 @@ function rankCmds(date, km, nickname, sign = 1) {
   return Object.entries(keys).flatMap(([p, k]) => [["ZINCRBY", k, meters, nickname], ["EXPIRE", k, RANK_TTL[p]]]);
 }
 
+// 모든 가입자의 모든 기록을 원본(workouts:*)에서 다시 합산해 현재 일·주·월 랭킹을 만든다.
+// 증가분(rankCmds)만으로는 기능 도입 전 기록, 만료된 키, 닉네임 불일치를 놓칠 수 있어 주기적으로 맞춘다.
+const RANK_SYNC_SEC = 3600;
+async function ensureRanking() {
+  if (await redis("EXISTS", "rank:synced")) return;
+  const userKeys = []; let cursor = "0";
+  do {
+    const [next, keys] = await redis("SCAN", cursor, "MATCH", "user:*", "COUNT", 500);
+    cursor = String(next); userKeys.push(...keys);
+  } while (cursor !== "0");
+  const users = (await pipeline(userKeys.map(k => ["GET", k]))).map(r => { try { return JSON.parse(r); } catch { return null; } }).filter(u => u && u.id && u.nickname);
+  const lists = await pipeline(users.map(u => ["LRANGE", `workouts:${u.id}`, 0, -1]));
+  const now = rankKeys(todayKst()), totals = { day: new Map(), week: new Map(), month: new Map() };
+  users.forEach((u, i) => (lists[i] || []).forEach(s => {
+    let w; try { w = JSON.parse(s); } catch { return; }
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(w.date)) return;
+    const keys = rankKeys(w.date), meters = Math.round(w.km * 1000);
+    for (const p of ["day", "week", "month"]) if (keys[p] === now[p]) totals[p].set(u.nickname, (totals[p].get(u.nickname) || 0) + meters);
+  }));
+  const cmds = [];
+  for (const p of ["day", "week", "month"]) {
+    cmds.push(["DEL", now[p]]);
+    const args = [...totals[p]].filter(e => e[1] > 0).flatMap(e => [e[1], e[0]]);
+    for (let i = 0; i < args.length; i += 400) cmds.push(["ZADD", now[p], ...args.slice(i, i + 400)]);
+    cmds.push(["EXPIRE", now[p], RANK_TTL[p]]);
+  }
+  cmds.push(["SET", "rank:synced", "1", "EX", RANK_SYNC_SEC]);
+  await pipeline(cmds);
+}
+
 /* ---------- 핸들러 래퍼 ---------- */
 function handler(methods) {
   return async (req, res) => {
@@ -120,7 +150,7 @@ function handler(methods) {
 }
 
 module.exports = {
-  redis, pipeline, rankKeys, rankCmds, todayKst, HttpError, hashPassword, checkPassword, setSession, clearSession, readSession, requireUser,
+  redis, pipeline, rankKeys, rankCmds, ensureRanking, todayKst, HttpError, hashPassword, checkPassword, setSession, clearSession, readSession, requireUser,
   nickKey, validNick, validWeight, publicUser, clientIp, rateLimit, handler,
   _setRedis: (fn, pipe) => { redisImpl = fn; pipelineImpl = pipe || (cmds => Promise.all(cmds.map(c => fn(...c)))); },   // 테스트용
 };
