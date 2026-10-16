@@ -11,7 +11,7 @@
   --bg:#EEF2EF; --surface:#FFFFFF; --sunk:#E3E9E5; --ink:#15201B; --muted:#56645D; --line:#D3DBD6;
   --accent:#1E6A50; --accent-soft:#D6E9E0; --on-accent:#FFFFFF;
   --signal:#D9531F; --signal-soft:#FBE3D8; --water:#2C6BA8; --warn:#9A6400;
-  --route:#E0261B; --route2:#7A3FD6; --start:#1E8A4C; --dest:#2C6BA8;
+  --route:#E0261B; --start:#1E8A4C; --dest:#2C6BA8;
   --map-land:#F4F3EE; --map-park:#CFE6C9; --map-water:#B9D6EE; --map-road:#FFFFFF; --map-road-edge:#D5D3CB; --map-foot:#C9C3B4; --map-bound:#7D8A84; --tile-filter:none;
   --f-display:"Gothic A1","Apple SD Gothic Neo","Malgun Gothic",sans-serif;
   --f-body:"IBM Plex Sans KR","Apple SD Gothic Neo","Malgun Gothic",sans-serif;
@@ -24,13 +24,13 @@
   --bg:#0E1412; --surface:#161E1B; --sunk:#1D2723; --ink:#E5ECE8; --muted:#97A59E; --line:#2A3631;
   --accent:#55B892; --accent-soft:#1E3A30; --on-accent:#0B1310;
   --signal:#FF8A5C; --signal-soft:#3A2219; --water:#6AA6DE; --warn:#E3B04B;
-  --route:#FF4A3D; --route2:#B48CFF; --start:#3FCB7A; --dest:#6AA6DE;
+  --route:#FF4A3D; --start:#3FCB7A; --dest:#6AA6DE;
   --map-land:#1A201E; --map-park:#24412F; --map-water:#1F3A52; --map-road:#3A4441; --map-road-edge:#2B3431; --map-foot:#4A5551; --map-bound:#8FA39A; --tile-filter:invert(1) hue-rotate(180deg) brightness(.9) contrast(.85) saturate(.6); color-scheme:dark}}
 :root[data-theme="dark"]{
   --bg:#0E1412; --surface:#161E1B; --sunk:#1D2723; --ink:#E5ECE8; --muted:#97A59E; --line:#2A3631;
   --accent:#55B892; --accent-soft:#1E3A30; --on-accent:#0B1310;
   --signal:#FF8A5C; --signal-soft:#3A2219; --water:#6AA6DE; --warn:#E3B04B;
-  --route:#FF4A3D; --route2:#B48CFF; --start:#3FCB7A; --dest:#6AA6DE;
+  --route:#FF4A3D; --start:#3FCB7A; --dest:#6AA6DE;
   --map-land:#1A201E; --map-park:#24412F; --map-water:#1F3A52; --map-road:#3A4441; --map-road-edge:#2B3431; --map-foot:#4A5551; --map-bound:#8FA39A; --tile-filter:invert(1) hue-rotate(180deg) brightness(.9) contrast(.85) saturate(.6); color-scheme:dark}
 
 *{box-sizing:border-box}
@@ -266,6 +266,7 @@ tr.has-route{cursor:pointer}
 tr.has-route:hover td{background:var(--sunk)}
 dialog#authDlg,dialog#shareDlg{border:1px solid var(--line);border-radius:var(--r);background:var(--surface);color:var(--ink);padding:0;width:min(380px,calc(100vw - 32px))}
 dialog#authDlg::backdrop,dialog#shareDlg::backdrop{background:rgba(0,0,0,.35)}
+.mobile-only{font-size:12px;color:var(--muted);align-self:center}
 .guide-btn{margin-top:8px;border:1px solid var(--line);background:var(--surface);color:var(--ink);border-radius:999px;padding:6px 14px;font-weight:600;font-size:13px;cursor:pointer}
 dialog#guideDlg{border:1px solid var(--line);border-radius:var(--r);background:var(--surface);color:var(--ink);padding:12px;width:min(420px,calc(100vw - 24px))}
 dialog#guideDlg::backdrop{background:rgba(0,0,0,.6)}
@@ -449,7 +450,7 @@ body.running{overflow:hidden}
         </div>
         <div class="maplegend">
           <span id="lgRoute"><i style="background:var(--route)"></i>추천 코스</span>
-          <span id="lgDup" hidden><i style="background:repeating-linear-gradient(0deg,var(--route2) 0 2px,transparent 2px 4px)"></i>여러 번 지나는 구간 (2번 = 2줄, 3번 이상 = 3줄)</span>
+          <span id="lgDup" hidden><i style="background:linear-gradient(0deg,var(--route) 0 14%,#F28C28 14% 28%,#F2C200 28% 43%,#2E9E4F 43% 57%,#2C6BA8 57% 71%,#3F3FA8 71% 86%,#8E44AD 86%)"></i>여러 번 지나는 구간 (지나는 순서: 빨·주·노·초·파·남·보)</span>
           <span id="lgIvl" hidden><i style="background:var(--muted)"></i>워밍업·쿨다운 <i style="background:var(--route);margin-left:8px"></i>고강도 <i style="background:var(--start);margin-left:8px"></i>저강도</span>
           <span id="lgRun" hidden><i style="background:var(--volt);outline:2px solid #0A0A0A"></i>내 이동 경로</span>
           <span><i style="background:var(--map-park)"></i>공원</span>
@@ -836,7 +837,9 @@ function offsetLine(pts, px) {
     return map.layerPointToLatLng(L.point(p.x + nx * px * k, p.y + ny * px * k));
   });
 }
-const DUP = { gap: 3.5, weight: 2.5, max: 3 };   // 겹친 구간: 지나는 횟수만큼(최대 3줄) 얇은 선을 나란히
+// 겹친 구간: k번째로 지나는 선을 무지개 순서(빨주노초파남보) 색의 얇은 선으로 나란히. 전체 폭은 DUP.width px 안에서 줄 간격을 줄임
+const PASS_COLORS = ["--route", "#F28C28", "#F2C200", "#2E9E4F", "#2C6BA8", "#3F3FA8", "#8E44AD"];
+const DUP = { width: 12, maxGap: 3.5 };
 function drawRoute(fit = false) {
   if (!routeLayer) return;
   routeLayer.clearLayers();
@@ -854,8 +857,9 @@ function drawRoute(fit = false) {
       const runs = passRuns(ll);
       for (const run of runs) {
         if (run.n === 1) { L.polyline(run.pts, { color: css("--route"), weight: 5, opacity: 0.95, lineJoin: "round", interactive: false }).addTo(routeLayer); continue; }
-        const m = Math.min(run.n, DUP.max);
-        for (let j = 0; j < m; j++) L.polyline(offsetLine(run.pts, (j - (m - 1) / 2) * DUP.gap), { color: css("--route2"), weight: DUP.weight, opacity: 0.95, lineJoin: "round", interactive: false }).addTo(routeLayer);
+        const m = Math.min(run.n, PASS_COLORS.length), gap = Math.min(DUP.maxGap, DUP.width / m);   // 7번째 이후는 보라 한 줄로 묶음
+        L.polyline(run.pts, { color: "#ffffff", weight: gap * m + 4, opacity: 0.9, lineJoin: "round", interactive: false }).addTo(routeLayer);
+        for (let j = 0; j < m; j++) L.polyline(offsetLine(run.pts, (j - (m - 1) / 2) * gap), { color: j ? PASS_COLORS[j] : css(PASS_COLORS[0]), weight: Math.max(1.5, gap * 0.8), opacity: 1, lineJoin: "round", interactive: false }).addTo(routeLayer);
       }
       dupShown = runs.some(x => x.n > 1);
     }
@@ -1004,12 +1008,13 @@ function renderResults(fit) {
     const warn = c.error ? `<span class="badge warn">경로를 찾지 못했어요</span>`
       : c.infeasible ? `<span class="badge warn">도착지까지 최소 ${fmtMin(r.estMin)}</span>`
       : c.err > 0.1 ? `<span class="badge warn">목표와 ${fmtPct(c.err)} 차이</span>` : "";
+    const fb = c.sceneFallback ? `<span class="badge warn">물가 없음 · 공원 기준</span>` : "";
     return `<button type="button" class="card" data-i="${i}" aria-pressed="${i === selected}">
       <div class="min">${r.min}<small>분</small></div>
       <div class="ticks"><i style="width:${(r.min / 60) * 100}%"></i></div>
       <div class="name">${esc(r.name)}</div>
       <div class="stats"><span><b>${fmtKm(r.km)}</b></span><span><b>${fmtKcal(r.kcal)}</b></span></div>
-      <div class="tags">${diffBadge(shownDiff(r))}${c.park != null ? `<span class="badge park">공원 ${fmtPct(c.park)}</span>` : ""}${warn}</div>
+      <div class="tags">${diffBadge(shownDiff(r))}${c.park != null ? `<span class="badge park">공원 ${fmtPct(c.park)}</span>` : ""}${fb}${warn}</div>
     </button>`; }).join("");
   $("cards").onclick = e => { const b = e.target.closest(".card"); if (!b) return; selected = +b.dataset.i; renderResults(true); };
   renderDetail(results[selected]);
@@ -1017,6 +1022,8 @@ function renderResults(fit) {
 }
 
 function aiKey(r) { return [r.name, r.min, input.pace, input.difficulty, input.goal, Math.round(r.km * 10)].join("|"); }
+// 운동 기록(GPS)은 휴대폰에서만: 데스크톱 브라우저에서는 운동 시작·완료 기록 버튼을 끈다 (iPadOS는 Mac처럼 보여 터치 수로 구분)
+const IS_MOBILE = /Android|iPhone|iPad|iPod|Mobile/i.test(navigator.userAgent) || (navigator.maxTouchPoints > 1 && /Macintosh/.test(navigator.userAgent));
 const KIND = { circle: "순환 루프", park: "공원 둘레 반복", detour: "도착지로 가는 우회 코스", out: "갔다가 돌아오는 왕복", hill: "언덕 반복", direct: "최단 경로" };
 
 function renderDetail(r) {
@@ -1032,8 +1039,9 @@ function renderDetail(r) {
     <div class="detail-head">
       <div><h2>${esc(r.name)}</h2>
         <div class="sub">${esc(input.start.name)} → ${esc(same ? "같은 곳으로 복귀" : input.dest.name)} · ${KIND[c.kind] || ""} ${diffBadge(d)}</div></div>
-      <div class="actions"><button type="button" class="btn go" id="startRun" ${c.infeasible || Run.s ? "disabled" : ""}>▶ 운동 시작</button>
-        <button type="button" class="btn" id="done" ${c.infeasible ? "disabled" : ""}>완료 기록하기</button></div>
+      <div class="actions"><button type="button" class="btn go" id="startRun" ${c.infeasible || Run.s || !IS_MOBILE ? "disabled" : ""}>▶ 운동 시작</button>
+        <button type="button" class="btn" id="done" ${c.infeasible || !IS_MOBILE ? "disabled" : ""}>완료 기록하기</button>
+        ${IS_MOBILE ? "" : `<span class="mobile-only">모바일에서만 기록할 수 있습니다</span>`}</div>
     </div>
     ${c.sceneFallback ? `<p class="alert" style="margin:12px 18px 0">주변 경로에 가능한 물가가 없습니다, 공원을 기준으로 검색했습니다.</p>` : ""}
     ${c.infeasible ? `<p class="alert" style="margin:12px 18px 0">도착지까지 가장 짧은 길도 ${fmtKm(r.km)}라서 ${r.min}분 안에 도착하기 어려워요. 이 속도로 약 ${fmtMin(r.estMin)} 걸립니다. 지도에는 최단 경로를 표시했어요.</p>` : ""}
@@ -1070,7 +1078,7 @@ function renderDetail(r) {
         <p class="src" id="aiNote"></p>
       </div>
     </div>`;
-  $("done").onclick = () => addRecord(r);
+  $("done").onclick = () => IS_MOBILE && addRecord(r);
   $("startRun").onclick = () => Run.start(r);
   syncStartbar();
   wireAi(r);
@@ -1413,13 +1421,15 @@ function syncStartbar() {
   const show = !Run.s && !$("view-plan").hidden && !!r && !r.c.error && !r.c.infeasible;
   $("startbar").hidden = !show;
   document.body.classList.toggle("has-startbar", show);
-  if (show) { $("sbMin").textContent = `${r.min}분 코스`; $("sbKm").textContent = `${fmtKm(r.km)} · ${r.name}`; }
+  if (show) { $("sbMin").textContent = `${r.min}분 코스`; $("sbKm").textContent = IS_MOBILE ? `${fmtKm(r.km)} · ${r.name}` : "모바일에서만 기록할 수 있습니다"; }
+  $("sbGo").disabled = !IS_MOBILE;
 }
 const Run = {
   s: null, watch: null, tick: null, wake: null, layer: null, line: null, me: null, ring: null,
   follow: true, here: null, off: 0, rejects: 0, armed: null, heading: null, hAnchor: null, shownH: 0,
   voice: store.get("voice", true), view: "stats", mapHome: null, holdT: null,
   start(r) {
+    if (!IS_MOBILE) { toast("모바일에서만 기록할 수 있습니다"); return; }
     if (this.s) return;
     if (!navigator.geolocation) { toast("이 브라우저에서는 위치를 쓸 수 없어요"); return; }
     this.s = { name: r.name, path: r.path || [], difficulty: input.difficulty, startedAt: Date.now(), hold: true,
