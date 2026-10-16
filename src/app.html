@@ -407,7 +407,7 @@ body.running{overflow:hidden}
         <div class="seg" id="goal" role="group" aria-label="목표"></div>
       </div>
       <div class="field">
-        <span class="label">선호 풍경 (여러 개 선택)</span>
+        <span class="label">선호 풍경 (하나 선택, 다시 누르면 해제)</span>
         <div class="chips" id="scenery" role="group" aria-label="선호 풍경"></div>
       </div>
       <div class="field">
@@ -671,12 +671,13 @@ const DIFF_TIP = {
 
 /* ================== 5. 상태 ================== */
 const DEFAULT_INPUT = { start: STATIONS[0], dest: STATIONS[0], pace: "jog", customOn: false, customKmh: 8,
-  difficulty: "flat", goal: "healing", scenery: ["park"], weight: 65 };
+  difficulty: "flat", goal: "healing", scenery: "park", weight: 65 };
 let input = Object.assign({}, DEFAULT_INPUT, store.get("input", {}));
 const validPlace = p => p && typeof p === "object" && Array.isArray(p.at) && Engine.inSongdo(p.at);
 if (!validPlace(input.start)) input.start = DEFAULT_INPUT.start;
 if (!validPlace(input.dest)) input.dest = input.start;
-input.scenery = (input.scenery || []).filter(s => SCENERY[s]);
+if (Array.isArray(input.scenery)) input.scenery = input.scenery[0];   // 예전 여러 개 선택 값은 첫 번째만
+if (!SCENERY[input.scenery]) input.scenery = "";
 delete input.customPace;   // 예전 분/km 값
 if (!(input.customKmh >= 3 && input.customKmh <= 25)) input.customKmh = DEFAULT_INPUT.customKmh;
 if (!PACES[input.pace]) input.pace = "jog";
@@ -829,7 +830,7 @@ function buildForm() {
       if (key === "pace") input.customOn = false; update(key !== "goal"); };
   }
   $("scenery").onclick = e => { const b = e.target.closest("button"); if (!b) return; const v = b.dataset.v;
-    input.scenery = input.scenery.includes(v) ? input.scenery.filter(x => x !== v) : [...input.scenery, v]; update(true); };
+    input.scenery = input.scenery === v ? "" : v; update(true); };
   $("customOn").onchange = e => { input.customOn = e.target.checked; update(true); };
   $("customKmh").oninput = e => { const v = parseFloat(e.target.value); if (v >= 3 && v <= 25) { input.customKmh = v; update(true, true); } };
   $("weight").oninput = e => { const v = parseFloat(e.target.value); if (v >= 30 && v <= 150) { input.weight = v; update(false, true); Account.saveWeight(v); } };
@@ -849,7 +850,7 @@ function syncForm() {
   $("destReset").disabled = same;
   for (const key of ["pace", "difficulty", "goal"])
     for (const b of $(key).children) b.setAttribute("aria-pressed", String(b.dataset.v === input[key] && !(key === "pace" && input.customOn)));
-  for (const b of $("scenery").children) b.setAttribute("aria-pressed", String(input.scenery.includes(b.dataset.v)));
+  for (const b of $("scenery").children) b.setAttribute("aria-pressed", String(input.scenery === b.dataset.v));
   const walk = isWalk(), ivlBtn = $("difficulty").querySelector('[data-v="interval"]');
   ivlBtn.disabled = walk;
   ivlBtn.title = walk ? "걷기에서는 인터벌을 쓸 수 없어요" : "";
@@ -863,7 +864,7 @@ function syncForm() {
   if (document.activeElement !== $("weight")) $("weight").value = input.weight;
   $("condSum").innerHTML = [same ? "" : `→ <b>${esc(input.dest.name)}</b>`,
     `<b>${input.customOn ? "직접" : PACES[input.pace].label} ${+k.toFixed(1)} km/h</b>`, DIFFS[input.difficulty].label, GOALS[input.goal],
-    input.scenery.map(v => SCENERY[v]).join("·") || "풍경 상관없음", `${input.weight} kg`].filter(Boolean).join(" · ");
+    SCENERY[input.scenery] || "풍경 상관없음", `${input.weight} kg`].filter(Boolean).join(" · ");
   syncPick();
 }
 
