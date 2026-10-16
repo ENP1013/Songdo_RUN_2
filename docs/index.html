@@ -1,4 +1,4 @@
-<!doctype html><html lang="ko"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover"><style>:root{padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px)}body{margin:0}img{max-width:100%}</style></head><body><title>Run &amp; Walk 코스 메이커</title>
+<!doctype html><html lang="ko"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover"><style>:root{padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px)}body{margin:0}img{max-width:100%}</style></head><body><title>SONGDO RUN | 송도 러닝·워킹 코스 메이커</title>
 <meta name="claude:viewport-fit-sides" content="cover">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Gothic+A1:wght@500;700;800&family=IBM+Plex+Sans+KR:wght@400;500;600&family=IBM+Plex+Mono:wght@500;600&family=Barlow+Condensed:ital,wght@1,700;1,800&display=swap">
@@ -45,7 +45,10 @@ button,input,select{font:inherit;color:inherit}
 
 header.top{display:flex;flex-wrap:wrap;align-items:flex-end;justify-content:space-between;gap:12px}
 header.top h1{font-size:clamp(24px,4vw,32px);font-weight:800}
-header.top h1 span{color:var(--accent)}
+header.top h1{display:flex;flex-direction:column;gap:8px;align-items:flex-start}
+header.top h1 .logo{font-family:var(--f-big);font-style:italic;font-weight:800;font-size:clamp(44px,9vw,72px);line-height:.88;letter-spacing:-.01em;text-transform:uppercase}
+header.top h1 .logo em{font-style:italic;background:var(--volt);color:var(--on-volt);padding:0 .14em 0 .08em;margin-left:.04em;border-radius:.08em;transform:skewX(-6deg);display:inline-block}
+header.top h1 small{font-family:var(--f-body);font-size:12.5px;font-weight:600;letter-spacing:.28em;color:var(--muted);text-transform:uppercase}
 header.top p{margin:4px 0 0;color:var(--muted);max-width:62ch}
 .tabs{display:flex;gap:4px;background:var(--sunk);padding:4px;border-radius:999px}
 .tabs button{border:0;background:transparent;padding:7px 16px;border-radius:999px;cursor:pointer;font-weight:600;color:var(--muted)}
@@ -363,7 +366,7 @@ body.running{overflow:hidden}
 <div class="wrap">
   <header class="top">
     <div>
-      <h1>Run <span>&amp;</span> Walk 코스 메이커</h1>
+      <h1><span class="logo">SONGDO <em>RUN</em></span><small>Run &amp; Walk 코스 메이커</small></h1>
       <p>송도 지도에서 출발지를 찍고 페이스와 취향을 고르면, 실제 보행로를 따라 20 · 40 · 60분 코스를 빨간 경로로 그려 드려요.</p>
     </div>
     <div class="topbar">
