@@ -214,6 +214,17 @@ table.log td.n{font-family:var(--f-num);text-align:right;white-space:nowrap}
 .cmts{border-top:1px solid var(--line);padding-top:8px;display:flex;flex-direction:column;gap:6px;font-size:14px}
 .cmts form{display:flex;gap:6px}
 .cmts input{flex:1;min-width:0;border:1px solid var(--line);background:var(--bg);border-radius:8px;padding:6px 10px}
+.rank{max-width:640px;margin:0 auto;width:100%}
+.rank .seg{display:flex;gap:4px;background:var(--sunk);padding:4px;border-radius:999px;align-self:flex-start}
+.rank .seg button{border:0;background:transparent;padding:6px 16px;border-radius:999px;cursor:pointer;font-weight:600;color:var(--muted)}
+.rank .seg button[aria-pressed="true"]{background:var(--surface);color:var(--ink);box-shadow:0 1px 2px rgba(0,0,0,.08)}
+.rank ol{list-style:none;margin:0;padding:0;display:flex;flex-direction:column}
+.rank li{display:flex;align-items:center;gap:12px;padding:10px 4px;border-bottom:1px solid var(--line)}
+.rank li .no{width:28px;text-align:right;font-family:var(--f-num);color:var(--muted)}
+.rank li:nth-child(-n+3) .no{color:var(--signal);font-weight:700}
+.rank li .nm{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.rank li .km{font-family:var(--f-num);font-weight:600}
+.rank li.me{background:var(--accent-soft);border-radius:8px}
 .x{border:0;background:transparent;color:var(--muted);cursor:pointer;font-size:16px;padding:0 4px}
 .tablewrap{overflow-x:auto}
 .routine{display:grid;grid-template-columns:repeat(7,minmax(0,1fr));gap:4px}
@@ -344,6 +355,7 @@ body.running{overflow:hidden}
         <button role="tab" id="tab-plan" aria-selected="true" data-tab="plan">코스 추천</button>
         <button role="tab" id="tab-log" aria-selected="false" data-tab="log">기록 · 배지</button>
         <button role="tab" id="tab-feed" aria-selected="false" data-tab="feed" hidden>커뮤니티</button>
+        <button role="tab" id="tab-rank" aria-selected="false" data-tab="rank" hidden>랭킹</button>
       </nav>
       <button type="button" class="acct" id="acctBtn" hidden>로그인</button>
     </div>
@@ -449,6 +461,15 @@ body.running{overflow:hidden}
   <!-- 커뮤니티 -->
   <section id="view-feed" hidden>
     <div class="feed" id="feed"></div>
+  </section>
+
+  <!-- 랭킹 -->
+  <section id="view-rank" hidden>
+    <div class="panel rank">
+      <div class="seg" id="rankSeg"><button data-p="day" aria-pressed="false">일간</button><button data-p="week" aria-pressed="true">주간</button><button data-p="month" aria-pressed="false">월간</button></div>
+      <p class="hint" id="rankHint"></p>
+      <div id="rankList"></div>
+    </div>
   </section>
 </div>
 <div class="toast" id="toast" hidden></div>
@@ -1114,6 +1135,29 @@ const Feed = {
   },
 };
 
+/* ================== 랭킹 ================== */
+const Rank = {
+  period: "week", seq: 0,
+  async load() {
+    const n = ++this.seq;
+    for (const b of $("rankSeg").children) b.setAttribute("aria-pressed", String(b.dataset.p === this.period));
+    $("rankList").innerHTML = "";
+    try {
+      const j = await Account.api("GET", `/api/ranking?period=${this.period}`);
+      if (n !== this.seq) return;   // 그 사이 다른 기간을 눌렀으면 버림
+      const label = { day: "오늘", week: "이번 주(월~일)", month: "이번 달" }[j.period];
+      $("rankHint").textContent = `${label} 운동 거리 순위 · 가입한 모든 사용자 기준${j.me ? ` · 내 순위 ${j.me.rank}위 (${fmtKm(j.me.km)})` : ""}`;
+      const inTop = j.rows.some(r => r.mine);
+      const li = r => `<li class="${r.mine ? "me" : ""}"><span class="no">${r.rank}</span><span class="nm">${esc(r.nickname)}${r.mine ? " (나)" : ""}</span><span class="km">${fmtKm(r.km)}</span></li>`;
+      $("rankList").innerHTML = j.rows.length
+        ? `<ol>${j.rows.map(li).join("")}${j.me && !inTop ? li({ rank: j.me.rank, nickname: this.nick(), km: j.me.km, mine: true }) : ""}</ol>`
+        : `<div class="empty">아직 이 기간의 기록이 없어요. 첫 번째로 기록해 보세요!</div>`;
+    } catch (e) { if (n === this.seq) toast(e.message || "랭킹을 불러오지 못했어요"); }
+  },
+  nick: () => Account.user ? Account.user.nickname : "",
+  wire() { $("rankSeg").onclick = e => { const b = e.target.closest("button"); if (b) { this.period = b.dataset.p; this.load(); } }; },
+};
+
 function weekDays() {
   const now = new Date(), mon = new Date(now);
   mon.setDate(now.getDate() - ((now.getDay() + 6) % 7));
@@ -1492,8 +1536,8 @@ const Account = {
     b.hidden = !this.available;
     b.textContent = this.user ? `${this.user.nickname} 님` : "로그인";
     b.classList.toggle("on", !!this.user);
-    $("tab-feed").hidden = !this.user;
-    if (!this.user && !$("view-feed").hidden) $("tab-log").click();
+    $("tab-feed").hidden = $("tab-rank").hidden = !this.user;
+    if (!this.user && (!$("view-feed").hidden || !$("view-rank").hidden)) $("tab-log").click();
     $("authOut").hidden = !!this.user; $("authIn").hidden = !this.user;
     $("authTitle").textContent = this.user ? "내 계정" : this.mode === "signup" ? "가입" : "로그인";
     if (this.user) $("authWho").textContent = this.user.nickname;
@@ -1557,7 +1601,8 @@ document.querySelector(".tabs").onclick = e => {
   $("view-plan").hidden = b.dataset.tab !== "plan";
   $("view-log").hidden = b.dataset.tab !== "log";
   $("view-feed").hidden = b.dataset.tab !== "feed";
-  if (b.dataset.tab === "log") renderLog(); else if (b.dataset.tab === "feed") Feed.load(); else map.invalidateSize();
+  $("view-rank").hidden = b.dataset.tab !== "rank";
+  if (b.dataset.tab === "log") renderLog(); else if (b.dataset.tab === "feed") Feed.load(); else if (b.dataset.tab === "rank") Rank.load(); else map.invalidateSize();
   syncStartbar();
 };
 $("target").innerHTML = `<span class="status" id="status"></span>`;
@@ -1566,6 +1611,7 @@ initMap();
 update(true);
 Account.wire();
 Feed.wire();
+Rank.wire();
 Account.render();
 renderLog();
 Run.wire();

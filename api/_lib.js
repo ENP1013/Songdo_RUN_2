@@ -87,6 +87,20 @@ async function rateLimit(key, limit, windowSec) {
   if (n > limit) throw new HttpError(429, "요청이 너무 많아요. 잠시 후 다시 시도해 주세요");
 }
 
+/* ---------- 랭킹 (기간별 Redis 정렬집합, 점수 = 거리 m) ---------- */
+const RANK_TTL = { day: 100 * 86400, week: 400 * 86400, month: 800 * 86400 };
+const todayKst = () => new Date(Date.now() + 9 * 3600e3).toISOString().slice(0, 10);   // 한국 날짜 기준
+function rankKeys(date) {   // 'YYYY-MM-DD' → 일·주(월요일 시작)·월 키
+  const [y, m, d] = date.split("-").map(Number), t = Date.UTC(y, m - 1, d);
+  const mon = new Date(t - ((new Date(t).getUTCDay() + 6) % 7) * 864e5).toISOString().slice(0, 10);
+  return { day: `rank:day:${date}`, week: `rank:week:${mon}`, month: `rank:month:${date.slice(0, 7)}` };
+}
+// 기록 추가(+)·삭제(-) 시 세 기간의 점수를 함께 갱신하는 명령들
+function rankCmds(date, km, nickname, sign = 1) {
+  const meters = sign * Math.round(km * 1000), keys = rankKeys(date);
+  return Object.entries(keys).flatMap(([p, k]) => [["ZINCRBY", k, meters, nickname], ["EXPIRE", k, RANK_TTL[p]]]);
+}
+
 /* ---------- 핸들러 래퍼 ---------- */
 function handler(methods) {
   return async (req, res) => {
@@ -106,7 +120,7 @@ function handler(methods) {
 }
 
 module.exports = {
-  redis, pipeline, HttpError, hashPassword, checkPassword, setSession, clearSession, readSession, requireUser,
+  redis, pipeline, rankKeys, rankCmds, todayKst, HttpError, hashPassword, checkPassword, setSession, clearSession, readSession, requireUser,
   nickKey, validNick, validWeight, publicUser, clientIp, rateLimit, handler,
   _setRedis: (fn, pipe) => { redisImpl = fn; pipelineImpl = pipe || (cmds => Promise.all(cmds.map(c => fn(...c)))); },   // 테스트용
 };
