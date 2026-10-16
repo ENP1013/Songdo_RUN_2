@@ -1,5 +1,5 @@
 // GPT가 쓰는 코스 설명·운동 팁·동기부여 문구 (로그인한 사용자만)
-// POST /api/tips { name, kind, start, dest, parks, parkPct, waterPct, pace, min, km, kcal, difficulty, goal }
+// POST /api/tips { tone(mild|spicy, 기본 mild), name, kind, start, dest, parks, parkPct, waterPct, pace, min, km, kcal, difficulty, goal }
 //   → { courseDescription, tips: [3], motivation, cached }
 // 서버에 OPENAI_API_KEY(필수)와 OPENAI_MODEL(선택, 기본 gpt-5.6-luna) 환경변수가 있어야 동작한다. 키는 코드·저장소에 넣지 않는다.
 // 클라이언트가 보낸 프롬프트를 그대로 쓰지 않고, 검증한 값(숫자·고정 선택지·짧은 이름)만으로 서버가 프롬프트를 만든다.
@@ -9,6 +9,7 @@ const L = require("./_lib");
 const KIND = { circle: "순환 루프", park: "공원 둘레 반복", detour: "도착지로 가는 우회 코스", out: "갔다가 돌아오는 왕복", hill: "언덕 반복", direct: "최단 경로" };
 const GOALS = { diet: "다이어트(꾸준한 속도와 칼로리)", record: "기록(페이스 전략)", healing: "힐링(공원 풍경과 호흡)" };
 const DIFFS = { flat: "평지", hill: "오르막", interval: "인터벌" };
+const TONES = { mild: "순한맛: 다정하고 따뜻하게 격려하는 말투", spicy: "매운맛: 츤데레 교관처럼 직설적이고 장난스럽게 약 올리듯 자극하는 말투(재미 요소). 단, 욕설·외모/체형/나이 비하·모욕은 절대 금지, 마지막엔 응원으로 마무리" };
 const CACHE_SEC = 24 * 3600;
 
 const str = (v, n) => typeof v === "string" ? v.replace(/[\u0000-\u001f\u007f]/g, " ").trim().slice(0, n) : "";
@@ -17,6 +18,7 @@ const num = (v, lo, hi) => Number.isFinite(+v) && v !== "" && v !== null && +v >
 function facts(b) {
   const f = {
     name: str(b.name, 40), start: str(b.start, 30), dest: b.dest ? str(b.dest, 30) : "", pace: str(b.pace, 20),
+    tone: b.tone === "spicy" ? "spicy" : "mild",
     kind: Object.hasOwn(KIND, b.kind) ? b.kind : "direct",
     goal: Object.hasOwn(GOALS, b.goal) ? b.goal : null, difficulty: Object.hasOwn(DIFFS, b.difficulty) ? b.difficulty : null,
     parks: (Array.isArray(b.parks) ? b.parks : []).slice(0, 4).map(p => str(p, 30)).filter(Boolean),
@@ -33,6 +35,7 @@ function prompt(f) {
 코스: ${f.name} (${KIND[f.kind]}), 지나는 공원: ${f.parks.join(", ") || "없음"}, 공원 구간 ${Math.round(f.parkPct)}%, 물가 구간 ${Math.round(f.waterPct)}%
 운동: ${f.pace}, ${Math.round(f.min)}분, 코스 거리 ${f.km.toFixed(2)}km, 예상 칼로리 ${Math.round(f.kcal)}kcal, 난이도 ${DIFFS[f.difficulty]}
 사용자 목표: ${GOALS[f.goal]}
+말투: ${TONES[f.tone]}
 한국어로, JSON 객체 하나만 답하세요: {"courseDescription": "코스 소개 2문장", "tips": ["운동 팁1","운동 팁2","운동 팁3"], "motivation": "동기부여 한 문장"}`;
 }
 

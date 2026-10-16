@@ -186,6 +186,7 @@ dl.facts dd{margin:0;overflow-wrap:anywhere}
 .legend{display:flex;gap:12px;font-size:12px;color:var(--muted);flex-wrap:wrap}
 .legend i{display:inline-block;width:10px;height:10px;border-radius:2px;margin-right:4px;vertical-align:-1px}
 ul.tips{margin:0;padding-left:18px;display:flex;flex-direction:column;gap:4px;font-size:14px}
+.aitone[aria-pressed=true]{border-color:var(--accent);color:var(--accent)}
 .motto{font-family:var(--f-display);font-weight:700;font-size:15px;color:var(--accent);margin:0}
 .ai-out{font-size:14px;display:flex;flex-direction:column;gap:8px}
 .ai-out p{margin:0}
@@ -1538,7 +1539,7 @@ function toggleShape(shape) {
   selected = i; renderResults(true);
 }
 
-function aiKey(r) { return [r.name, r.min, input.pace, input.difficulty, input.goal, Math.round(r.km * 10)].join("|"); }
+function aiKey(r) { return [aiTone, r.name, r.min, input.pace, input.difficulty, input.goal, Math.round(r.km * 10)].join("|"); }
 // 운동 기록(GPS)은 휴대폰에서만: 데스크톱 브라우저에서는 운동 시작·완료 기록 버튼을 끈다 (iPadOS는 Mac처럼 보여 터치 수로 구분)
 const IS_MOBILE = /Android|iPhone|iPad|iPod|Mobile/i.test(navigator.userAgent) || (navigator.maxTouchPoints > 1 && /Macintosh/.test(navigator.userAgent));
 const KIND = { circle: "순환 루프", park: "공원 둘레 반복", detour: "도착지로 가는 우회 코스", out: "갔다가 돌아오는 왕복", hill: "언덕 반복", direct: "최단 경로", shape: "지도에 모양 그리기" };
@@ -1589,7 +1590,8 @@ function renderDetail(r) {
           <ul class="tips" style="margin-top:6px">${t.tips.map(x => `<li>${x}</li>`).join("")}<li>${DIFF_TIP[d]}</li></ul>
           <p class="motto" style="margin-top:8px">${t.motto}</p>`}</div>
         <div class="actions" id="aiActions" hidden>
-          <button type="button" class="btn" id="aiBtn">${ai ? "AI 설명 다시 받기" : "AI 코스 설명 받기"}</button>
+          <h3 style="flex-basis:100%;margin:0">AI 코스 설명</h3>
+          ${Object.entries(AI_TONES).map(([k, v]) => `<button type="button" class="btn aitone" data-tone="${k}" aria-pressed="${!!ai && aiTone === k}">${v.ic} AI ${v.label}</button>`).join("")}
           <button type="button" class="btn" id="aiStop" hidden>중지</button>
         </div>
         <p class="src" id="aiNote"></p>
@@ -1603,33 +1605,38 @@ function renderDetail(r) {
 function ivlBar(p) { return p.segs.map(([t, m]) => `<span class="${t}" style="flex:${m}"></span>`).join(""); }
 
 /* ================== 9. LLM: 코스 설명 · 팁 · 동기부여 (숫자는 코드가 넣는다) ================== */
-let sampleFn = null, aiCtl = null;
+let sampleFn = null, aiCtl = null, aiTone = "mild";   // 순한맛/매운맛
+const AI_TONES = { mild: { label: "순한맛", ic: "🙂", say: "다정하고 따뜻하게 격려하는 말투" },
+  spicy: { label: "매운맛", ic: "🌶️", say: "츤데레 교관처럼 직설적이고 장난스럽게 자극하는 말투(욕설·외모/체형 비하 금지, 마지막엔 응원으로 마무리)" } };
 function aiHtml(a) {
-  return `<h3>AI 코스 설명</h3><div class="ai-out" style="margin-top:6px"><p>${esc(a.courseDescription)}</p>
+  return `<h3>AI 코스 설명 · ${AI_TONES[aiTone].ic} ${AI_TONES[aiTone].label}</h3><div class="ai-out" style="margin-top:6px"><p>${esc(a.courseDescription)}</p>
     <ul class="tips">${a.tips.map(x => `<li>${esc(x)}</li>`).join("")}</ul>
     <p class="motto">${esc(a.motivation)}</p></div>`;
 }
 function wireAi(r) {   // claude.ai에서는 호스트 AI, 일반 호스팅(서버 있음)에서는 서버가 부르는 GPT
   if (!$("aiActions") || !(sampleFn || Account.available) || r.c.infeasible) return;
   $("aiActions").hidden = false;
-  $("aiBtn").onclick = () => askAi(r);
+  document.querySelectorAll(".aitone").forEach(b => b.onclick = () => askAi(r, b.dataset.tone));
   $("aiStop").onclick = () => aiCtl?.abort();
 }
-async function askAi(r) {
+async function askAi(r, tone) {
+  aiTone = tone || aiTone;
   const c = r.c, key = aiKey(r);
+  if (aiCache[key]) { renderDetail(r); return; }   // 이미 받은 말투는 다시 부르지 않고 바로 보여줌
   const prompt = `당신은 친절한 러닝 코치입니다. 아래 수치는 앱이 이미 계산한 확정값입니다. 숫자를 새로 만들거나 바꾸지 말고, 필요하면 아래 숫자만 그대로 인용하세요.
 지역: 인천 송도동. 출발: ${input.start.name}, 도착: ${samePlace() ? "출발지로 복귀" : input.dest.name}
 코스: ${r.name} (${KIND[c.kind]}), 지나는 공원: ${c.parkNames.slice(0, 4).join(", ") || "없음"}, 공원 구간 ${fmtPct(c.park)}, 물가 구간 ${fmtPct(c.water)}
 운동: ${input.customOn ? fmtPace(r.kmh) : PACES[input.pace].label}, ${fmtMin(r.min)}, 코스 거리 ${fmtKm(r.km)}, 예상 칼로리 ${fmtKcal(r.kcal)}, 난이도 ${DIFFS[shownDiff(r)].label}
 사용자 목표: ${GOALS[input.goal]} (다이어트=꾸준한 속도와 칼로리, 기록=페이스 전략, 힐링=공원 풍경과 호흡)
+말투: ${AI_TONES[aiTone].label}, ${AI_TONES[aiTone].say}
 한국어로, JSON 하나만 답하세요: {"courseDescription": "코스 소개 2문장", "tips": ["팁1","팁2","팁3"], "motivation": "동기부여 한 문장"}`;
   if (!sampleFn && !Account.user) { toast("로그인하면 AI 팁을 받을 수 있어요"); Account.openLogin(); return; }
   aiCtl = new AbortController();
-  $("aiBtn").disabled = true; $("aiStop").hidden = false; $("aiNote").textContent = "코스 설명을 쓰는 중...";
+  document.querySelectorAll(".aitone").forEach(b => b.disabled = true); $("aiStop").hidden = false; $("aiNote").textContent = "코스 설명을 쓰는 중...";
   try {
     const a = sampleFn ? await sampleFn.json(prompt, { modelTier: "quick", signal: aiCtl.signal, cache: aiCache[key] ? false : true })
       : await Account.api("POST", "/api/tips", { name: r.name, kind: c.kind, start: input.start.name, dest: samePlace() ? "" : input.dest.name,
-        parks: c.parkNames.slice(0, 4), parkPct: (c.park || 0) * 100, waterPct: (c.water || 0) * 100, pace: input.customOn ? fmtPace(r.kmh) : PACES[input.pace].label,
+        tone: aiTone, parks: c.parkNames.slice(0, 4), parkPct: (c.park || 0) * 100, waterPct: (c.water || 0) * 100, pace: input.customOn ? fmtPace(r.kmh) : PACES[input.pace].label,
         min: r.min, km: r.km, kcal: r.kcal, difficulty: shownDiff(r), goal: input.goal });
     if (!a || typeof a.courseDescription !== "string" || !Array.isArray(a.tips)) throw { code: "invalid_json" };
     aiCache[key] = { courseDescription: a.courseDescription, tips: a.tips.slice(0, 3).map(String), motivation: String(a.motivation || "") };
@@ -1641,7 +1648,7 @@ async function askAi(r) {
     if ($("aiNote")) $("aiNote").textContent = msg ?? (e?.status ? e.message : "AI 연결이 끊겼어요. 기본 팁은 그대로 쓸 수 있어요.");
     if (!sampleFn && !Account.available && $("aiActions")) $("aiActions").hidden = true;
   } finally {
-    if ($("aiBtn")) { $("aiBtn").disabled = false; $("aiStop").hidden = true; }
+    document.querySelectorAll(".aitone").forEach(b => b.disabled = false); if ($("aiStop")) $("aiStop").hidden = true;
   }
 }
 
