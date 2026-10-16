@@ -254,6 +254,10 @@ table.log td.n{font-family:var(--f-num);text-align:right;white-space:nowrap}
 .acct.on{border-color:var(--accent);color:var(--accent)}
 dialog#authDlg{border:1px solid var(--line);border-radius:var(--r);background:var(--surface);color:var(--ink);padding:0;width:min(380px,calc(100vw - 32px))}
 dialog#authDlg::backdrop{background:rgba(0,0,0,.35)}
+.guide-btn{margin-top:8px;border:1px solid var(--line);background:var(--surface);color:var(--ink);border-radius:999px;padding:6px 14px;font-weight:600;font-size:13px;cursor:pointer}
+dialog#guideDlg{border:1px solid var(--line);border-radius:var(--r);background:var(--surface);color:var(--ink);padding:12px;width:min(420px,calc(100vw - 24px))}
+dialog#guideDlg::backdrop{background:rgba(0,0,0,.6)}
+#guideVid{display:block;width:100%;max-height:calc(100dvh - 120px);margin-top:8px;border-radius:8px;background:#0E1412}
 #authForm{padding:18px;display:flex;flex-direction:column;gap:14px}
 #authOut,#authIn{display:flex;flex-direction:column;gap:14px}
 .dlg-head{display:flex;justify-content:space-between;align-items:center}
@@ -356,6 +360,7 @@ body.running{overflow:hidden}
     <div>
       <h1>Run <span>&amp;</span> Walk 코스 메이커</h1>
       <p>송도 지도에서 출발지를 찍고 페이스와 취향을 고르면, 실제 보행로를 따라 20 · 40 · 60분 코스를 빨간 경로로 그려 드려요.</p>
+      <button type="button" class="guide-btn" id="guideBtn" aria-haspopup="dialog">▶ 사용 가이드 영상 (약 1분 40초)</button>
     </div>
     <div class="topbar">
       <nav class="tabs" role="tablist">
@@ -525,6 +530,11 @@ body.running{overflow:hidden}
     </div>
   </div>
 </div>
+<dialog id="guideDlg" aria-labelledby="guideTitle">
+  <div class="dlg-head"><h2 id="guideTitle">사용 가이드</h2><button type="button" class="x" id="guideClose" aria-label="닫기">×</button></div>
+  <video id="guideVid" poster="guide-poster.jpg" controls playsinline preload="none"></video>
+  <p class="hint" id="guideErr" hidden>영상을 불러오지 못했어요. songdorun2.vercel.app 에서 열어 주세요.</p>
+</dialog>
 <dialog id="authDlg" aria-labelledby="authTitle">
   <form id="authForm" method="dialog" novalidate>
     <div class="dlg-head"><h2 id="authTitle">로그인</h2><button type="button" class="x" id="authClose" aria-label="닫기">×</button></div>
@@ -1654,6 +1664,16 @@ Account.render();
 renderLog();
 Run.wire();
 Account.init();
+
+// 사용 가이드 영상: 열 때 처음 불러오고, 닫으면 멈춤
+$("guideBtn").onclick = () => {
+  const v = $("guideVid");
+  if (!v.src) { v.onerror = () => { $("guideErr").hidden = false; }; v.src = "guide.mp4"; }
+  $("guideDlg").showModal(); v.play().catch(() => {});
+};
+$("guideClose").onclick = () => $("guideDlg").close();
+$("guideDlg").onclose = () => $("guideVid").pause();
+$("guideDlg").onclick = e => { if (e.target === $("guideDlg")) $("guideDlg").close(); };   // 바깥(배경) 누르면 닫기
 
 // claude.ai에서 열면 AI 설명 버튼이 켜지고, 일반 호스팅에서는 기본 팁만 표시
 if (window.claude?.use) window.claude.use("sample").then(fn => {
