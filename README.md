@@ -34,6 +34,7 @@ python tools/build.py
 - `vercel.json`이 `docs/`를 정적 사이트로, `api/`를 서버 함수로 배포합니다. npm 패키지가 필요 없습니다.
 - 저장소: Vercel 프로젝트 → Storage → Upstash for Redis 연결. `KV_REST_API_URL`·`KV_REST_API_TOKEN`(또는 `UPSTASH_REDIS_REST_*`) 환경변수가 자동 등록됩니다.
 - 선택: `SESSION_SECRET` 환경변수(긴 임의 문자열). 없으면 Redis 토큰에서 파생합니다.
+- AI 운동 팁(GPT): Vercel 환경변수에 `OPENAI_API_KEY`를 등록하면 코스 상세의 **AI 코스 설명 받기**가 로그인한 사용자에게 GPT가 쓴 코스 설명·팁 3개·동기부여 문구를 보여줍니다. 모델은 `OPENAI_MODEL`(기본 `gpt-5.6-luna`, OpenAI 대시보드 모델 목록의 ID와 같아야 함)로 바꿀 수 있고, 키는 서버(`api/tips.js`)에서만 쓰며 저장소에 넣지 않습니다. 로컬에서는 `.env.example`을 `.env`로 복사해 값을 채우면 `node tools/dev_server.js`가 읽습니다(`.env`는 git에 올라가지 않음). 키가 없으면 기본 팁만 보입니다. 사용자당 10분 10회·하루 60회로 제한하고, 같은 조건은 하루 동안 캐시합니다.
 - 보안: 비밀번호 scrypt 해시, 서명된 httpOnly·Secure·SameSite=Lax 쿠키(30일), 같은 닉네임 5회 실패 시 5분 잠금, IP별 가입·로그인 요청 제한, 쓰기 요청은 JSON만 허용, 기록은 세션의 사용자 것만 읽고 씀.
 
 ## 계산 규칙
