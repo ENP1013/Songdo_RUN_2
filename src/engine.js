@@ -374,6 +374,7 @@ const Engine = (() => {
   // 경유지 간격(140·100 m)과 출발지에 맞출 꼭짓점·회전(±15°)·크기를 바꿔 보며 기준을 통과한 경로 중 윤곽과 가장 비슷한 것을 고른다 (없으면 null)
   const SHAPES = {
     cat: [[0, -0.5], [0.35, -0.42], [0.5, -0.1], [0.5, 0.25], [0.46, 0.72], [0.2, 0.42], [-0.2, 0.42], [-0.46, 0.72], [-0.5, 0.25], [-0.5, -0.1], [-0.35, -0.42], [0, -0.5]],
+    heart: [[0, -0.55], [0.3, -0.25], [0.5, 0.02], [0.56, 0.28], [0.46, 0.48], [0.26, 0.55], [0.1, 0.46], [0, 0.32], [-0.1, 0.46], [-0.26, 0.55], [-0.46, 0.48], [-0.56, 0.28], [-0.5, 0.02], [-0.3, -0.25], [0, -0.55]],
   };
   const ANIMAL_OK = { dev: 0.04, err: 0.1, dup: 0.12 };   // 윤곽 편차(얼굴 폭 대비)·거리 오차·되돌아가는 구간 비율 상한
   function animalRoute(A, Dm, shape = "cat") {
@@ -413,7 +414,7 @@ const Engine = (() => {
       if (pass && (!best || score < best.score)) best = { path, ...an, dev, err, dup, score, outline: pts.map(ll) };
     }
     if (!best) return null;
-    return { ...best, kind: "animal", shape, id: "animal:" + shape, name: { cat: "고양이 얼굴 코스" }[shape], kmMarks: kmMarks(best.path) };
+    return { ...best, kind: "animal", shape, id: "animal:" + shape, name: { cat: "고양이 얼굴 코스", heart: "하트 코스" }[shape], kmMarks: kmMarks(best.path) };
   }
 
   function courseName(c, A, B, same) {

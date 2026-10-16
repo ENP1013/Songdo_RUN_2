@@ -102,7 +102,7 @@ select,textarea,input[type=number],input[type=text]{background:var(--bg);border:
 .target b{color:var(--ink)}
 .status{margin-left:auto;font-size:12.5px;color:var(--accent);font-weight:600}
 .cards{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:10px}
-.animal-row{display:flex;justify-content:center;margin-top:-2px}
+.animal-row{display:flex;flex-direction:column;align-items:center;gap:4px;margin-top:-2px}
 .animal-btn{font-size:12px;font-weight:700;padding:4px 10px;border-radius:999px;border:1px solid var(--accent);background:var(--accent-soft);color:var(--accent);cursor:pointer;white-space:nowrap}
 .animal-btn:disabled{opacity:.5;cursor:default;border-color:var(--line);background:transparent;color:var(--muted)}
 .animal-btn[aria-pressed="true"]{background:var(--accent);color:var(--surface)}
@@ -733,13 +733,16 @@ if (!(input.customKmh >= 3 && input.customKmh <= 25)) input.customKmh = DEFAULT_
 if (!PACES[input.pace]) input.pace = "jog";
 let records = store.get("records", []);
 let selected = 1;       // 기본으로 40분 코스를 펼침
-/* 동물 얼굴 코스 (이벤트): 아래 역·공원을 출발지=도착지로 고르면 60분 카드 아래에 '동물 만들기'가 나타난다.
-   Engine.animalRoute로 고양이 얼굴이 또렷하게 그려지는 곳만 골랐고, 지금 페이스의 60분 거리로 그릴 수 없으면 버튼이 꺼진다 */
-const ANIMAL_PLACES = ["센트럴파크역", "국제업무지구역", "인천대입구역", "테크노파크역", "캠퍼스타운역", "센트럴파크", "국제화복합단지 1호 근린공원", "제33호 근린공원"];
-const Animal = { cache: new Map(), on: false, orig: null };
+/* 모양 코스 (이벤트): 아래 역·공원을 출발지=도착지로 고르면 60분 카드 아래에 '동물 만들기'·'하트 만들기'가 나타난다.
+   Engine.animalRoute로 모양이 또렷하게 그려지는 곳만 골랐고, 지금 페이스의 60분 거리로 그릴 수 없으면 버튼이 꺼진다 */
+const SHAPE_EVENTS = {
+  cat: { label: "🐱 동물 만들기", tip: "고양이 얼굴", places: ["센트럴파크역", "국제업무지구역", "인천대입구역", "테크노파크역", "캠퍼스타운역", "센트럴파크", "국제화복합단지 1호 근린공원", "제33호 근린공원"] },
+  heart: { label: "❤️ 하트 만들기", tip: "하트", places: ["센트럴파크역", "인천대입구역", "테크노파크역", "캠퍼스타운역", "센트럴파크", "신송공원", "해돋이공원", "미추홀공원"] },
+};
+const Animal = { cache: new Map(), on: null, orig: null };   // on: 지금 60분 자리에 그린 모양
 const animalIdx = () => DURATIONS.indexOf(60);
-const animalKey = () => samePlace() && ANIMAL_PLACES.includes(input.start.name)
-  ? `${input.start.name}|${Math.round(targetKm(curKmh(), 60) * 1000)}` : null;
+const shapeKey = shape => samePlace() && SHAPE_EVENTS[shape].places.includes(input.start.name)
+  ? `${shape}|${input.start.name}|${Math.round(targetKm(curKmh(), 60) * 1000)}` : null;
 let results = [];
 let pickMode = "start";
 const aiCache = {};
@@ -1025,7 +1028,7 @@ function update(recompute, debounce = false) {
   timer = setTimeout(() => {
     const kmh = Calc.speedKmh(input.pace, input.customOn ? input.customKmh : 0);
     const avoid = new Set();
-    Animal.on = false;
+    Animal.on = null;
     results = DURATIONS.map(min => {
       const c = Engine.plan(input.start.at, input.dest.at, targetKm(kmh, min) * 1000,
         { scenery: input.scenery, difficulty: input.difficulty }, avoid);
@@ -1074,37 +1077,41 @@ function renderResults(fit) {
       <div class="tags">${diffBadge(shownDiff(r))}${c.park != null ? `<span class="badge park">공원 ${fmtPct(c.park)}</span>` : ""}${fb}${warn}</div>
     </button>`; }).join("") + animalButton();
   $("cards").onclick = e => {
-    if (e.target.closest("#animalBtn")) return toggleAnimal();
+    const ab = e.target.closest(".animal-btn"); if (ab) return toggleAnimal(ab.dataset.shape);
     const b = e.target.closest(".card"); if (!b) return; selected = +b.dataset.i; renderResults(true);
   };
   renderDetail(results[selected]);
   drawRoute(fit);
 }
 
-// 60분 카드 아래 '동물 만들기': 처음 보이면 뒤에서 계산(0.3~0.6초)해 두고, 그릴 수 있을 때만 켠다
+// 60분 카드 아래 모양 버튼: 처음 보이면 뒤에서 계산(모양마다 0.3~0.6초)해 두고, 그릴 수 있을 때만 켠다
 function animalButton() {
-  const key = animalKey(); if (!key) return "";
-  const has = Animal.cache.has(key), ok = has && !!Animal.cache.get(key);
-  if (!has) setTimeout(() => {
-    if (Animal.cache.has(key) || animalKey() !== key) return;
-    Animal.cache.set(key, Engine.animalRoute(input.start.at, targetKm(curKmh(), 60) * 1000, "cat"));
-    renderResults(false);
-  }, 60);
-  const label = Animal.on ? "원래 코스로" : !has ? "동물 찾는 중…" : "🐱 동물 만들기";
-  return `<div class="animal-row" style="grid-column:${animalIdx() + 1}"><button type="button" class="animal-btn" id="animalBtn" aria-pressed="${Animal.on}" ${ok ? "" : "disabled"}
-    title="${has && !ok ? "이 페이스의 60분 거리로는 동물 모양이 나오지 않아요" : "경로로 지도에 고양이 얼굴을 그려요"}">${label}</button></div>`;
+  const btns = Object.entries(SHAPE_EVENTS).map(([shape, ev]) => {
+    const key = shapeKey(shape); if (!key) return "";
+    const has = Animal.cache.has(key), ok = has && !!Animal.cache.get(key), on = Animal.on === shape;
+    if (!has) setTimeout(() => {
+      if (Animal.cache.has(key) || shapeKey(shape) !== key) return;
+      Animal.cache.set(key, Engine.animalRoute(input.start.at, targetKm(curKmh(), 60) * 1000, shape));
+      renderResults(false);
+    }, 60);
+    const label = on ? "원래 코스로" : !has ? "찾는 중…" : ev.label;
+    return `<button type="button" class="animal-btn" data-shape="${shape}" aria-pressed="${on}" ${ok ? "" : "disabled"}
+      title="${has && !ok ? `이 페이스의 60분 거리로는 ${ev.tip} 모양이 나오지 않아요` : `경로로 지도에 ${ev.tip}을(를) 그려요`}">${label}</button>`;
+  }).join("");
+  return btns ? `<div class="animal-row" style="grid-column:${animalIdx() + 1}">${btns}</div>` : "";
 }
-function toggleAnimal() {
-  const i = animalIdx(), c = Animal.cache.get(animalKey());
-  if (Animal.on) { results[i] = Animal.orig; Animal.on = false; }
-  else if (c) { Animal.orig = results[i]; results[i] = withNumbers({ min: 60, c }); Animal.on = true; }
+function toggleAnimal(shape) {
+  const i = animalIdx(), c = Animal.cache.get(shapeKey(shape));
+  if (Animal.on) results[i] = Animal.orig;   // 다른 모양을 누르면 원래 코스로 되돌린 뒤 바꿈
+  if (Animal.on === shape || !c) Animal.on = null;
+  else { Animal.orig = results[i]; results[i] = withNumbers({ min: 60, c }); Animal.on = shape; }
   selected = i; renderResults(true);
 }
 
 function aiKey(r) { return [r.name, r.min, input.pace, input.difficulty, input.goal, Math.round(r.km * 10)].join("|"); }
 // 운동 기록(GPS)은 휴대폰에서만: 데스크톱 브라우저에서는 운동 시작·완료 기록 버튼을 끈다 (iPadOS는 Mac처럼 보여 터치 수로 구분)
 const IS_MOBILE = /Android|iPhone|iPad|iPod|Mobile/i.test(navigator.userAgent) || (navigator.maxTouchPoints > 1 && /Macintosh/.test(navigator.userAgent));
-const KIND = { circle: "순환 루프", park: "공원 둘레 반복", detour: "도착지로 가는 우회 코스", out: "갔다가 돌아오는 왕복", hill: "언덕 반복", direct: "최단 경로", animal: "지도에 동물 얼굴 그리기" };
+const KIND = { circle: "순환 루프", park: "공원 둘레 반복", detour: "도착지로 가는 우회 코스", out: "갔다가 돌아오는 왕복", hill: "언덕 반복", direct: "최단 경로", animal: "지도에 모양 그리기" };
 
 function renderDetail(r) {
   const c = r.c;
