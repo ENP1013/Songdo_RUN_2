@@ -47,6 +47,7 @@ http.createServer(async (req, res) => {
   }
   const f = path.join(ROOT, "docs", url.pathname === "/" ? "index.html" : url.pathname);
   if (!f.startsWith(path.join(ROOT, "docs")) || !fs.existsSync(f)) { res.writeHead(404); return res.end(); }
-  res.writeHead(200, { "Content-Type": f.endsWith(".html") ? "text/html; charset=utf-8" : "application/octet-stream" });
+  const TYPES = { ".html": "text/html; charset=utf-8", ".mp4": "video/mp4", ".jpg": "image/jpeg" };
+  res.writeHead(200, { "Content-Type": TYPES[path.extname(f)] || "application/octet-stream" });
   fs.createReadStream(f).pipe(res);
 }).listen(+process.env.PORT || 3000, function () { console.log("http://localhost:" + this.address().port); });

@@ -17,6 +17,7 @@
 | `tests/api.test.js` | 메모리 저장소로 API 동작 테스트 (`node --test tests/api.test.js`) |
 | `tools/dev_server.js` | 로컬 확인용 서버 (`PORT=3917 node tools/dev_server.js`, 메모리 저장소) |
 | `tools/build.py` | 단일 HTML 생성 → `index.html`(claude.ai 아티팩트용), `docs/index.html`(GitHub Pages용) |
+| `tools/guide/` | 사용 가이드 영상(`docs/guide.mp4`) 자동 녹화·합성. 아래 "사용 가이드 영상" 참고 |
 
 지도는 Leaflet 1.9.4와 OpenStreetMap 타일을 씁니다. 타일을 불러올 수 없는 환경에서는 `songdo.json`의 도로·공원·물 데이터로 지도를 직접 그립니다.
 
@@ -53,6 +54,18 @@ python tools/build.py
 - 운동하는 동안 Wake Lock으로 화면이 꺼지지 않게 합니다. 웹은 백그라운드에서 GPS를 받을 수 없어서, 화면이 꺼져 있던 구간은 끊긴 두 지점을 직선으로 잇습니다.
 - 진행 상태를 localStorage에 저장하므로 새로고침하거나 탭이 닫혀도 6시간 안에 다시 열면 이어서 기록합니다.
 - 화면 흐름: 3·2·1 카운트다운 → 전체 화면 러닝 모드(큰 거리 숫자, 기록/지도 전환) → 일시정지 → 길게 눌러 종료(키보드는 두 번 눌러 종료) → km 구간 기록이 담긴 요약. 1 km마다 음성으로 거리와 평균 페이스를 알려 주고(Web Speech API, 끌 수 있음), 진행 방향은 화살표로 표시합니다.
+
+## 사용 가이드 영상
+
+상단의 **사용 가이드 영상** 버튼은 `docs/guide.mp4`(모바일 화면, 약 1분 44초)를 재생합니다. 화면이 바뀌면 다시 만들 수 있습니다.
+
+```bash
+PORT=3918 node tools/dev_server.js &                 # 메모리 저장소 (데모 사용자·기록은 스크립트가 넣음)
+node tools/guide/record.js <작업 폴더> 3918           # 헤드리스 Chrome 390x844로 가입→코스→GPS 기록→공유→커뮤니티→랭킹 녹화
+python tools/guide/compose.py <작업 폴더>/v docs/guide.mp4   # 자막·인트로·엔딩 합성 (pip install imageio-ffmpeg pillow)
+```
+
+GPS 장면은 코스 경로를 따라 가짜 위치를 넣고 시계를 30배 빠르게 돌려 녹화합니다(자막에 표시).
 
 ## 데이터 출처
 
