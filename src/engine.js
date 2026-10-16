@@ -369,6 +369,53 @@ const Engine = (() => {
     return best;
   }
 
+  /* ---------- 동물 얼굴 코스 (이벤트) ---------- */
+  // 얼굴 윤곽(x 오른쪽, y 위쪽, 폭 약 1)을 출발지에 맞춰 놓고 일정 간격으로 경유지를 찍어 보행로로 잇는다.
+  // 경유지 간격(140·100 m)과 출발지에 맞출 꼭짓점·회전(±15°)·크기를 바꿔 보며 기준을 통과한 경로 중 윤곽과 가장 비슷한 것을 고른다 (없으면 null)
+  const SHAPES = {
+    cat: [[0, -0.5], [0.35, -0.42], [0.5, -0.1], [0.5, 0.25], [0.46, 0.72], [0.2, 0.42], [-0.2, 0.42], [-0.46, 0.72], [-0.5, 0.25], [-0.5, -0.1], [-0.35, -0.42], [0, -0.5]],
+  };
+  const ANIMAL_OK = { dev: 0.04, err: 0.1, dup: 0.12 };   // 윤곽 편차(얼굴 폭 대비)·거리 오차·되돌아가는 구간 비율 상한
+  function animalRoute(A, Dm, shape = "cat") {
+    const T = SHAPES[shape], sN = nearestNode(A, 400);
+    if (!T || sN < 0) return null;
+    const xy = p => [(p[1] - A[1]) * KX, (p[0] - A[0]) * KY], ll = ([x, y]) => [A[0] + y / KY, A[1] + x / KX];
+    const fill = (pts, step) => {
+      const out = [pts[0]];
+      for (let i = 1; i < pts.length; i++) {
+        const [a, b] = [pts[i - 1], pts[i]], n = Math.max(1, Math.round(Math.hypot(b[0] - a[0], b[1] - a[1]) / step));
+        for (let k = 1; k <= n; k++) out.push([a[0] + (b[0] - a[0]) * k / n, a[1] + (b[1] - a[1]) * k / n]);
+      }
+      return out;
+    };
+    const segD = (p, a, b) => { const dx = b[0] - a[0], dy = b[1] - a[1], l2 = dx * dx + dy * dy || 1e-9; const t = Math.max(0, Math.min(1, ((p[0] - a[0]) * dx + (p[1] - a[1]) * dy) / l2)); return Math.hypot(p[0] - a[0] - t * dx, p[1] - a[1] - t * dy); };
+    const lineD = (p, L) => { let m = Infinity; for (let i = 1; i < L.length; i++) m = Math.min(m, segD(p, L[i - 1], L[i])); return m; };
+    const per = T.slice(1).reduce((s, p, i) => s + Math.hypot(p[0] - T[i][0], p[1] - T[i][1]), 0);
+    let best = null;
+    for (const step of [140, 100]) for (let a = 0; a < T.length - 1; a++) for (const rot of [-15, 0, 15]) for (const k of [0.62, 0.72, 0.82]) {
+      const s = Dm * k / per, r = rot * Math.PI / 180;
+      const pts = T.slice(a, -1).concat(T.slice(0, a + 1)).map(([x, y]) => {   // a번 꼭짓점이 출발지에 오도록
+        const X = (x - T[a][0]) * s, Y = (y - T[a][1]) * s; return [X * Math.cos(r) - Y * Math.sin(r), X * Math.sin(r) + Y * Math.cos(r)];
+      });
+      const way = fill(pts, step), ids = [sN];
+      let ok = true;
+      for (const p of way.slice(1, -1)) { const n = snapIn(ll(p)); if (n < 0) { ok = false; break; } if (n !== ids[ids.length - 1]) ids.push(n); }
+      if (!ok) continue;
+      ids.push(sN);
+      const ch = chain(ids); if (!ch) continue;
+      const path = toPath(ch.nodes), an = analyze(path), R = path.map(xy), Tm = fill(pts, 25);
+      const dev = (Tm.reduce((t, p) => t + lineD(p, R), 0) / Tm.length + R.reduce((t, p) => t + lineD(p, pts), 0) / R.length) / 2 / s;
+      const keys = new Set(); let dup = 0;
+      for (let i = 1; i < path.length; i++) { const kk = [path[i - 1], path[i]].map(q => q.join()).sort().join("|"); if (keys.has(kk)) dup++; keys.add(kk); }
+      const err = Math.abs(an.m - Dm) / Dm; dup /= Math.max(1, path.length - 1);
+      const score = dev + err * 0.5 + dup * 0.5;
+      const pass = dev <= ANIMAL_OK.dev && err <= ANIMAL_OK.err && dup <= ANIMAL_OK.dup;
+      if (pass && (!best || score < best.score)) best = { path, ...an, dev, err, dup, score, outline: pts.map(ll) };
+    }
+    if (!best) return null;
+    return { ...best, kind: "animal", shape, id: "animal:" + shape, name: { cat: "고양이 얼굴 코스" }[shape], kmMarks: kmMarks(best.path) };
+  }
+
   function courseName(c, A, B, same) {
     if (c.kind === "park") return `${c.parkName} 둘레 ${c.laps}바퀴`;
     if (c.kind === "out") return `${c.parkNames[0] ? c.parkNames[0] + " 방향" : dirName(c.theta) + "쪽"} 왕복`;
@@ -379,6 +426,6 @@ const Engine = (() => {
     return via ? `${via} 경유 ${dir}쪽 루프` : `${dir}쪽 동네 한 바퀴`;
   }
 
-  return { load, plan, inSongdo, nearestNode, distM, get data() { return loaded; } };
+  return { load, plan, animalRoute, inSongdo, nearestNode, distM, get data() { return loaded; } };
 })();
 if (typeof module !== "undefined") module.exports = Engine;

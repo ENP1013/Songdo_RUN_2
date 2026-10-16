@@ -102,6 +102,10 @@ select,textarea,input[type=number],input[type=text]{background:var(--bg);border:
 .target b{color:var(--ink)}
 .status{margin-left:auto;font-size:12.5px;color:var(--accent);font-weight:600}
 .cards{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:10px}
+.animal-row{display:flex;justify-content:center;margin-top:-2px}
+.animal-btn{font-size:12px;font-weight:700;padding:4px 10px;border-radius:999px;border:1px solid var(--accent);background:var(--accent-soft);color:var(--accent);cursor:pointer;white-space:nowrap}
+.animal-btn:disabled{opacity:.5;cursor:default;border-color:var(--line);background:transparent;color:var(--muted)}
+.animal-btn[aria-pressed="true"]{background:var(--accent);color:var(--surface)}
 @media (max-width:560px){
   .cards{gap:8px}
   .card{padding:10px;gap:6px}
@@ -974,6 +978,53 @@ const Engine = (() => {
     return best;
   }
 
+  /* ---------- 동물 얼굴 코스 (이벤트) ---------- */
+  // 얼굴 윤곽(x 오른쪽, y 위쪽, 폭 약 1)을 출발지에 맞춰 놓고 일정 간격으로 경유지를 찍어 보행로로 잇는다.
+  // 경유지 간격(140·100 m)과 출발지에 맞출 꼭짓점·회전(±15°)·크기를 바꿔 보며 기준을 통과한 경로 중 윤곽과 가장 비슷한 것을 고른다 (없으면 null)
+  const SHAPES = {
+    cat: [[0, -0.5], [0.35, -0.42], [0.5, -0.1], [0.5, 0.25], [0.46, 0.72], [0.2, 0.42], [-0.2, 0.42], [-0.46, 0.72], [-0.5, 0.25], [-0.5, -0.1], [-0.35, -0.42], [0, -0.5]],
+  };
+  const ANIMAL_OK = { dev: 0.04, err: 0.1, dup: 0.12 };   // 윤곽 편차(얼굴 폭 대비)·거리 오차·되돌아가는 구간 비율 상한
+  function animalRoute(A, Dm, shape = "cat") {
+    const T = SHAPES[shape], sN = nearestNode(A, 400);
+    if (!T || sN < 0) return null;
+    const xy = p => [(p[1] - A[1]) * KX, (p[0] - A[0]) * KY], ll = ([x, y]) => [A[0] + y / KY, A[1] + x / KX];
+    const fill = (pts, step) => {
+      const out = [pts[0]];
+      for (let i = 1; i < pts.length; i++) {
+        const [a, b] = [pts[i - 1], pts[i]], n = Math.max(1, Math.round(Math.hypot(b[0] - a[0], b[1] - a[1]) / step));
+        for (let k = 1; k <= n; k++) out.push([a[0] + (b[0] - a[0]) * k / n, a[1] + (b[1] - a[1]) * k / n]);
+      }
+      return out;
+    };
+    const segD = (p, a, b) => { const dx = b[0] - a[0], dy = b[1] - a[1], l2 = dx * dx + dy * dy || 1e-9; const t = Math.max(0, Math.min(1, ((p[0] - a[0]) * dx + (p[1] - a[1]) * dy) / l2)); return Math.hypot(p[0] - a[0] - t * dx, p[1] - a[1] - t * dy); };
+    const lineD = (p, L) => { let m = Infinity; for (let i = 1; i < L.length; i++) m = Math.min(m, segD(p, L[i - 1], L[i])); return m; };
+    const per = T.slice(1).reduce((s, p, i) => s + Math.hypot(p[0] - T[i][0], p[1] - T[i][1]), 0);
+    let best = null;
+    for (const step of [140, 100]) for (let a = 0; a < T.length - 1; a++) for (const rot of [-15, 0, 15]) for (const k of [0.62, 0.72, 0.82]) {
+      const s = Dm * k / per, r = rot * Math.PI / 180;
+      const pts = T.slice(a, -1).concat(T.slice(0, a + 1)).map(([x, y]) => {   // a번 꼭짓점이 출발지에 오도록
+        const X = (x - T[a][0]) * s, Y = (y - T[a][1]) * s; return [X * Math.cos(r) - Y * Math.sin(r), X * Math.sin(r) + Y * Math.cos(r)];
+      });
+      const way = fill(pts, step), ids = [sN];
+      let ok = true;
+      for (const p of way.slice(1, -1)) { const n = snapIn(ll(p)); if (n < 0) { ok = false; break; } if (n !== ids[ids.length - 1]) ids.push(n); }
+      if (!ok) continue;
+      ids.push(sN);
+      const ch = chain(ids); if (!ch) continue;
+      const path = toPath(ch.nodes), an = analyze(path), R = path.map(xy), Tm = fill(pts, 25);
+      const dev = (Tm.reduce((t, p) => t + lineD(p, R), 0) / Tm.length + R.reduce((t, p) => t + lineD(p, pts), 0) / R.length) / 2 / s;
+      const keys = new Set(); let dup = 0;
+      for (let i = 1; i < path.length; i++) { const kk = [path[i - 1], path[i]].map(q => q.join()).sort().join("|"); if (keys.has(kk)) dup++; keys.add(kk); }
+      const err = Math.abs(an.m - Dm) / Dm; dup /= Math.max(1, path.length - 1);
+      const score = dev + err * 0.5 + dup * 0.5;
+      const pass = dev <= ANIMAL_OK.dev && err <= ANIMAL_OK.err && dup <= ANIMAL_OK.dup;
+      if (pass && (!best || score < best.score)) best = { path, ...an, dev, err, dup, score, outline: pts.map(ll) };
+    }
+    if (!best) return null;
+    return { ...best, kind: "animal", shape, id: "animal:" + shape, name: { cat: "고양이 얼굴 코스" }[shape], kmMarks: kmMarks(best.path) };
+  }
+
   function courseName(c, A, B, same) {
     if (c.kind === "park") return `${c.parkName} 둘레 ${c.laps}바퀴`;
     if (c.kind === "out") return `${c.parkNames[0] ? c.parkNames[0] + " 방향" : dirName(c.theta) + "쪽"} 왕복`;
@@ -984,7 +1035,7 @@ const Engine = (() => {
     return via ? `${via} 경유 ${dir}쪽 루프` : `${dir}쪽 동네 한 바퀴`;
   }
 
-  return { load, plan, inSongdo, nearestNode, distM, get data() { return loaded; } };
+  return { load, plan, animalRoute, inSongdo, nearestNode, distM, get data() { return loaded; } };
 })();
 if (typeof module !== "undefined") module.exports = Engine;
 
@@ -1113,6 +1164,13 @@ if (!(input.customKmh >= 3 && input.customKmh <= 25)) input.customKmh = DEFAULT_
 if (!PACES[input.pace]) input.pace = "jog";
 let records = store.get("records", []);
 let selected = 1;       // 기본으로 40분 코스를 펼침
+/* 동물 얼굴 코스 (이벤트): 아래 역·공원을 출발지=도착지로 고르면 60분 카드 아래에 '동물 만들기'가 나타난다.
+   Engine.animalRoute로 고양이 얼굴이 또렷하게 그려지는 곳만 골랐고, 지금 페이스의 60분 거리로 그릴 수 없으면 버튼이 꺼진다 */
+const ANIMAL_PLACES = ["센트럴파크역", "국제업무지구역", "인천대입구역", "테크노파크역", "캠퍼스타운역", "센트럴파크", "국제화복합단지 1호 근린공원", "제33호 근린공원"];
+const Animal = { cache: new Map(), on: false, orig: null };
+const animalIdx = () => DURATIONS.indexOf(60);
+const animalKey = () => samePlace() && ANIMAL_PLACES.includes(input.start.name)
+  ? `${input.start.name}|${Math.round(targetKm(curKmh(), 60) * 1000)}` : null;
 let results = [];
 let pickMode = "start";
 const aiCache = {};
@@ -1253,8 +1311,8 @@ function junctionArrows(path) {
   return out.filter(a => a.start || leaves.get(a.pk).size > 1);
 }
 const ARROW_PX = 22;   // 분기점에서 화살표까지 거리
-function drawArrows(path, plain) {
-  const arrows = junctionArrows(path);
+function drawArrows(path, plain, startOnly) {
+  const arrows = junctionArrows(path).filter(a => !startOnly || a.start);
   for (const a of arrows) {
     const p = map.latLngToLayerPoint(a.at), q = map.latLngToLayerPoint(a.to);
     const dx = q.x - p.x, dy = q.y - p.y, len = Math.hypot(dx, dy); if (len < 1) continue;
@@ -1275,6 +1333,7 @@ function drawRoute(fit = false) {
   let dupShown = false, arrowShown = false;
   if (r && r.path) {
     const ll = r.path;
+    if (r.c.outline) L.polyline(r.c.outline, { color: css("--accent"), weight: 16, opacity: 0.3, lineJoin: "round", lineCap: "round", interactive: false }).addTo(routeLayer);   // 동물 코스: 목표 윤곽
     L.polyline(ll, { color: "#ffffff", weight: 9, opacity: 0.9, lineJoin: "round", interactive: false }).addTo(routeLayer);
     if (r.ivl && !r.c.infeasible) {   // 계획 속도대로 달린다고 보고, 시간 비율로 경로를 나눠 색칠
       const col = { w: css("--muted"), f: css("--route"), e: css("--start") };
@@ -1290,12 +1349,12 @@ function drawRoute(fit = false) {
       }
       dupShown = runs.some(x => x.n > 1);
     }
-    if (!r.c.infeasible) arrowShown = drawArrows(ll, !!r.ivl);   // 인터벌은 색이 강도를 뜻하므로 화살표는 검정
+    if (!r.c.infeasible) arrowShown = drawArrows(ll, !!r.ivl, r.c.kind === "animal");   // 동물 코스는 그림이 가려지지 않게 출발 방향만   // 인터벌은 색이 강도를 뜻하므로 화살표는 검정
     const c = r.c;
     // 반환점은 출발지로 돌아오는 코스에서만 표시
     if (same && c.turn) L.marker(c.turn, { interactive: false, keyboard: false, zIndexOffset: 500,
       icon: L.divIcon({ className: "", iconSize: [0, 0], html: `<div class="turn-dot"></div><div class="turn-label">${c.turnLabel}${c.reps > 1 ? ` · ${c.reps}회` : ""}</div>` }) }).addTo(routeLayer);
-    if (fit) map.fitBounds(L.latLngBounds([...ll, input.start.at, input.dest.at]), { padding: [40, 40], maxZoom: 16.5 });
+    if (fit) map.fitBounds(L.latLngBounds([...ll, input.start.at, input.dest.at]), { paddingTopLeft: [30, 100], paddingBottomRight: [30, 30], maxZoom: 16.5 });   // 위쪽은 출발지·도착지 찍기 막대만큼 비움
   }
   $("lgIvl").hidden = !(r && r.ivl); $("lgRoute").hidden = !!(r && r.ivl);
   $("lgDup").hidden = !dupShown; $("lgArrow").hidden = !arrowShown;
@@ -1397,6 +1456,7 @@ function update(recompute, debounce = false) {
   timer = setTimeout(() => {
     const kmh = Calc.speedKmh(input.pace, input.customOn ? input.customKmh : 0);
     const avoid = new Set();
+    Animal.on = false;
     results = DURATIONS.map(min => {
       const c = Engine.plan(input.start.at, input.dest.at, targetKm(kmh, min) * 1000,
         { scenery: input.scenery, difficulty: input.difficulty }, avoid);
@@ -1443,16 +1503,39 @@ function renderResults(fit) {
       <div class="name">${esc(r.name)}</div>
       <div class="stats"><span><b>${fmtKm(r.km)}</b></span><span><b>${fmtKcal(r.kcal)}</b></span></div>
       <div class="tags">${diffBadge(shownDiff(r))}${c.park != null ? `<span class="badge park">공원 ${fmtPct(c.park)}</span>` : ""}${fb}${warn}</div>
-    </button>`; }).join("");
-  $("cards").onclick = e => { const b = e.target.closest(".card"); if (!b) return; selected = +b.dataset.i; renderResults(true); };
+    </button>`; }).join("") + animalButton();
+  $("cards").onclick = e => {
+    if (e.target.closest("#animalBtn")) return toggleAnimal();
+    const b = e.target.closest(".card"); if (!b) return; selected = +b.dataset.i; renderResults(true);
+  };
   renderDetail(results[selected]);
   drawRoute(fit);
+}
+
+// 60분 카드 아래 '동물 만들기': 처음 보이면 뒤에서 계산(0.3~0.6초)해 두고, 그릴 수 있을 때만 켠다
+function animalButton() {
+  const key = animalKey(); if (!key) return "";
+  const has = Animal.cache.has(key), ok = has && !!Animal.cache.get(key);
+  if (!has) setTimeout(() => {
+    if (Animal.cache.has(key) || animalKey() !== key) return;
+    Animal.cache.set(key, Engine.animalRoute(input.start.at, targetKm(curKmh(), 60) * 1000, "cat"));
+    renderResults(false);
+  }, 60);
+  const label = Animal.on ? "원래 코스로" : !has ? "동물 찾는 중…" : "🐱 동물 만들기";
+  return `<div class="animal-row" style="grid-column:${animalIdx() + 1}"><button type="button" class="animal-btn" id="animalBtn" aria-pressed="${Animal.on}" ${ok ? "" : "disabled"}
+    title="${has && !ok ? "이 페이스의 60분 거리로는 동물 모양이 나오지 않아요" : "경로로 지도에 고양이 얼굴을 그려요"}">${label}</button></div>`;
+}
+function toggleAnimal() {
+  const i = animalIdx(), c = Animal.cache.get(animalKey());
+  if (Animal.on) { results[i] = Animal.orig; Animal.on = false; }
+  else if (c) { Animal.orig = results[i]; results[i] = withNumbers({ min: 60, c }); Animal.on = true; }
+  selected = i; renderResults(true);
 }
 
 function aiKey(r) { return [r.name, r.min, input.pace, input.difficulty, input.goal, Math.round(r.km * 10)].join("|"); }
 // 운동 기록(GPS)은 휴대폰에서만: 데스크톱 브라우저에서는 운동 시작·완료 기록 버튼을 끈다 (iPadOS는 Mac처럼 보여 터치 수로 구분)
 const IS_MOBILE = /Android|iPhone|iPad|iPod|Mobile/i.test(navigator.userAgent) || (navigator.maxTouchPoints > 1 && /Macintosh/.test(navigator.userAgent));
-const KIND = { circle: "순환 루프", park: "공원 둘레 반복", detour: "도착지로 가는 우회 코스", out: "갔다가 돌아오는 왕복", hill: "언덕 반복", direct: "최단 경로" };
+const KIND = { circle: "순환 루프", park: "공원 둘레 반복", detour: "도착지로 가는 우회 코스", out: "갔다가 돌아오는 왕복", hill: "언덕 반복", direct: "최단 경로", animal: "지도에 동물 얼굴 그리기" };
 
 function renderDetail(r) {
   const c = r.c;
