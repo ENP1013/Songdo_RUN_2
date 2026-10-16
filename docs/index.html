@@ -1165,14 +1165,15 @@ if (!(input.customKmh >= 3 && input.customKmh <= 25)) input.customKmh = DEFAULT_
 if (!PACES[input.pace]) input.pace = "jog";
 let records = store.get("records", []);
 let selected = 1;       // 기본으로 40분 코스를 펼침
-/* 모양 코스 (이벤트): 아래 역·공원을 출발지=도착지로 고르면 60분 카드 아래에 '하트 만들기'가 나타난다.
-   Engine.shapeRoute로 모양이 또렷하게 그려지는 곳만 골랐고, 지금 페이스의 60분 거리로 그릴 수 없으면 버튼이 꺼진다 */
+/* 모양 코스 (이벤트): 정해 둔 장소를 출발지=도착지로, 정해 둔 페이스로 고르면 60분 카드 아래에 '하트 만들기'가 나타난다.
+   Engine.shapeRoute로 모양이 또렷하게 그려지는 조합만 골랐고, 그 거리로 그릴 수 없으면 버튼이 꺼진다 */
 const SHAPE_EVENTS = {
-  heart: { label: "❤️ 하트 만들기", tip: "하트", places: ["센트럴파크역", "인천대입구역", "테크노파크역", "캠퍼스타운역", "센트럴파크", "신송공원", "해돋이공원", "미추홀공원"] },
+  heart: { label: "❤️ 하트 만들기", tip: "하트", places: ["테크노파크역"], pace: "run" },   // 테크노파크역 · 러닝(직접 입력 제외) · 60분에서만
 };
 const Shape = { cache: new Map(), on: null, orig: null };   // on: 지금 60분 자리에 그린 모양
 const shapeIdx = () => DURATIONS.indexOf(60);
 const shapeKey = shape => samePlace() && SHAPE_EVENTS[shape].places.includes(input.start.name)
+  && (!SHAPE_EVENTS[shape].pace || (input.pace === SHAPE_EVENTS[shape].pace && !input.customOn))
   ? `${shape}|${input.start.name}|${Math.round(targetKm(curKmh(), 60) * 1000)}` : null;
 let results = [];
 let pickMode = "start";
