@@ -295,7 +295,8 @@ const Engine = (() => {
   }
 
   /* ---------- 공개 API ---------- */
-  // prefs: { scenery: ["park","water","city","mountain"], difficulty }
+  const SCENE_W = 100;   // 선호 풍경 가중치 (200이면 물가 코스 거리 오차가 평균 12%까지 벌어짐)
+  // prefs: { scenery: "park" | "water" | "city" | "mountain" | "" (상관없음), difficulty }
   function plan(A, B, Dm, prefs, avoid = new Set()) {
     const sN = nearestNode(A, 400), eN = nearestNode(B, 400);
     if (sN < 0 || eN < 0) return { error: "far" };
@@ -328,17 +329,20 @@ const Engine = (() => {
     const near = parks.filter(p => /[가-힣]/.test(p.name) && p.per >= 500 && distM(p.center, A) <= Dm * 0.4)
       .sort((x, y) => distM(x.center, A) - distM(y.center, A)).slice(0, 5);
     for (const p of near) add(parkRoute(sN, eN, A, Dm, p));
-    if (prefs.difficulty === "hill" || prefs.scenery.includes("mountain")) add(hillRoute(sN, eN, Dm));
+    if (prefs.difficulty === "hill" || prefs.scenery === "mountain") add(hillRoute(sN, eN, Dm));
 
     if (!cands.length) return { error: "nocandidate" };
-    const scored = cands.map(c => {
-      const path = toPath(c.nodes), an = analyze(path);
+    // 고른 풍경의 구간 비율을 후보 중 최고값에 견줘 0~1로 맞춘 뒤 SCENE_W를 곱한다.
+    // 물가처럼 비율이 원래 낮은 풍경도 효과가 나도록 상대값을 쓰고, 최고값이 25% 미만이면 25%로 나눠 미미한 차이는 키우지 않는다.
+    const analyzed = cands.map(c => { const path = toPath(c.nodes); return { c, path, an: analyze(path) }; });
+    const sceneRatio = an => prefs.scenery === "park" ? an.park : prefs.scenery === "water" ? an.water
+      : prefs.scenery === "city" ? 1 - Math.max(an.park, an.water) : 0;
+    const bestRatio = Math.max(0.25, ...analyzed.map(x => sceneRatio(x.an)));
+    const scored = analyzed.map(({ c, path, an }) => {
       const err = Math.abs(an.m - Dm) / Dm;
       let s = -err * 120 - (err > 0.1 ? 40 : 0);
-      if (prefs.scenery.includes("park")) s += an.park * 40 + (an.park >= 0.5 ? 15 : 0);
-      if (prefs.scenery.includes("water")) s += an.water * 40;
-      if (prefs.scenery.includes("city")) s += (1 - Math.max(an.park, an.water)) * 20;
-      if (c.kind === "hill") s += prefs.difficulty === "hill" ? 60 : prefs.scenery.includes("mountain") ? 30 : -40;
+      s += SCENE_W * sceneRatio(an) / bestRatio;
+      if (c.kind === "hill") s += prefs.difficulty === "hill" ? 60 : prefs.scenery === "mountain" ? 30 : -40;
       if (c.kind === "park" && c.laps > 3) s -= (c.laps - 3) * 6;
       const id = c.kind === "park" ? "park:" + c.parkName : c.kind === "hill" ? "hill" : c.kind + ":" + (c.theta ?? c.side);
       if (avoid.has(id)) s -= 35;
